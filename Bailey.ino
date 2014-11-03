@@ -216,7 +216,7 @@ SerialCommand SCmd;   // The SerialCommand object
 float imuValues[6];
 float ypr[3];
 float pitch, roll, yaw;
-long StartL=0, LoopT=0;
+long StartL=0, LoopT=0, StartL2=0;
 
 String LastEvent="";
 

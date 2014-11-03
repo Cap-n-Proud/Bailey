@@ -14,32 +14,51 @@ void RemoteRead(){
  
 
 void RemoteUpload()
-{
+{ //http://forum.arduino.cc/index.php?topic=85523.0
   char *arg = SCmd.next();
   String line = "";
   if (!configuration.debug){      
           balanceKalmanFilter.correct(dISTE);
-          line = pitch + SEPARATOR
-                 + roll + SEPARATOR
-                 + yaw + SEPARATOR
+          char buffer[10];
+           StartL2= millis();
+            line = dtostrf(yaw, 10, 3, buffer) + SEPARATOR
+          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
+          + dtostrf(roll, 10, 3, buffer) + SEPARATOR
+          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
+          + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
+          + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
+          + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
+          + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
+          + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
+          + dtostrf((configuration.speedPIDKp * 10000), 10, 3, buffer))  + SEPARATOR
+          + dtostrf((configuration.speedPIDKi* 10000, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.speedPIDKd * 10000, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDConKp * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDConKi * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDConKd * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDAggKp * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDAggKi * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.anglePIDAggKd * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.TriggerAngleAggressive * 100, 10, 3, buffer)) + SEPARATOR
+          + dtostrf((configuration.calibratedZeroAngle * 100, 10, 3, buffer)) + SEPARATOR                                           
+          + LoopT;
+          Serial.println(millis()-StartL2);
+          /*
+           line = dtostrf(yaw, 10, 3, buffer)+ SEPARATOR
+          + dtostrf(pitch, 10, 3, buffer)+ SEPARATOR
+          + dtostrf(roll, 10, 3, buffer)+ SEPARATOR
+          + dtostrf(pitch, 10, 3, buffer)+ SEPARATOR
+          + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR;
+          Serial.print(line); 
+          
+
+          + LoopT;
+          pitch + SEPARATOR
+
                  + LoopT + SEPARATOR
-                 + anglePIDOutput + SEPARATOR
-                 + leftMotorSpeed + SEPARATOR
-                 + rightMotorSpeed) + SEPARATOR
-                 + (dISTE) + SEPARATOR
-                 + (balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2) + SEPARATOR
-                 + (configuration.speedPIDKp * 10000) + SEPARATOR
-                 + (configuration.speedPIDKi * 10000) + SEPARATOR
-                 + (configuration.speedPIDKd * 10000) + SEPARATOR
-                 + (configuration.anglePIDConKp * 100) + SEPARATOR
-                 + (configuration.anglePIDConKi * 100) + SEPARATOR
-                 + (configuration.anglePIDConKd * 100) + SEPARATOR
-                 + (configuration.anglePIDAggKp * 100) + SEPARATOR
-                 + (configuration.anglePIDAggKi * 100) + SEPARATOR
-                 + (configuration.anglePIDAggKd * 100) + SEPARATOR
-                 + n(configuration.TriggerAngleAggressive*100) + SEPARATOR
-                 + (configuration.calibratedZeroAngle*100);
-        Serial.println(line);
+                 
+                */
+        
 }
 
 }
