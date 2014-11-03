@@ -12,39 +12,34 @@ void RemoteRead(){
 	
  }
  
-var SEPARATOR = ",";
+
 void RemoteUpload()
 {
   char *arg = SCmd.next();
+  String line = "";
   if (!configuration.debug){      
           balanceKalmanFilter.correct(dISTE);
-          line = (float)pitch + SEPARATOR
-                 + (float)roll + SEPARATOR
-                 + (float)yaw + SEPARATOR
+          line = pitch + SEPARATOR
+                 + roll + SEPARATOR
+                 + yaw + SEPARATOR
                  + LoopT + SEPARATOR
                  + anglePIDOutput + SEPARATOR
-                 + (float)leftMotorSpeed + SEPARATOR
-                 + (float)rightMotorSpeed) + SEPARATOR
-                 + (dISTE)+ SEPARATOR
-                 + (balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2);
-          
-           Serial.print("READ Read_SPIDKp ");Serial.println(configuration.speedPIDKp * 10000);
-            Serial.print("READ Read_SPIDKi ");Serial.println(configuration.speedPIDKi * 10000);
-            Serial.print("READ Read_SPIDKd ");Serial.println(configuration.speedPIDKd * 10000);
-            Serial.print("READ Read_APIDKp ");Serial.println(configuration.anglePIDConKp * 100);
-            Serial.print("READ Read_APIDKi ");Serial.println((float)configuration.anglePIDConKi * 100);
-            Serial.print("READ Read_APIDKd ");Serial.println(configuration.anglePIDConKd * 100);
-            Serial.print("READ Read_APIDAggKp ");Serial.println(configuration.anglePIDAggKp * 100);
-            Serial.print("READ Read_APIDAggKi ");Serial.println((float)configuration.anglePIDAggKi * 100);
-            Serial.print("READ Read_APIDAggKd ");Serial.println(configuration.anglePIDAggKd * 100);
-
-          Serial.print("READ Read_TriggerAngleAggressive ");Serial.println(configuration.TriggerAngleAggressive*100);
-          Serial.print("READ Read_calibratedZeroAngle ");Serial.println(configuration.calibratedZeroAngle*100);
-
-          if (LastEvent.length()>1){
-            Serial.print("READ Read_Info ");Serial.println(LastEvent);LastEvent = "";}
-
-          //Serial.print("READ motorsON off");//Serial.print(configuration.motorsON);  
+                 + leftMotorSpeed + SEPARATOR
+                 + rightMotorSpeed) + SEPARATOR
+                 + (dISTE) + SEPARATOR
+                 + (balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2) + SEPARATOR
+                 + (configuration.speedPIDKp * 10000) + SEPARATOR
+                 + (configuration.speedPIDKi * 10000) + SEPARATOR
+                 + (configuration.speedPIDKd * 10000) + SEPARATOR
+                 + (configuration.anglePIDConKp * 100) + SEPARATOR
+                 + (configuration.anglePIDConKi * 100) + SEPARATOR
+                 + (configuration.anglePIDConKd * 100) + SEPARATOR
+                 + (configuration.anglePIDAggKp * 100) + SEPARATOR
+                 + (configuration.anglePIDAggKi * 100) + SEPARATOR
+                 + (configuration.anglePIDAggKd * 100) + SEPARATOR
+                 + n(configuration.TriggerAngleAggressive*100) + SEPARATOR
+                 + (configuration.calibratedZeroAngle*100);
+        Serial.println(line);
 }
 
 }

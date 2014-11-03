@@ -34,6 +34,7 @@ L29x motorLeft(11, 12, 13);
 
 //Button motorBtn(13, false, false, 20);
 const uint8_t LED_PIN = 13;
+String SEPARATOR = ",";
 
 // Tell it where to store your config data in EEPROM
 boolean LCD_Output = false;
