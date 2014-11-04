@@ -29,26 +29,27 @@ void RemoteUpload()
           + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
           + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
           + LoopT + SEPARATOR
-	  + dtostrf(buffer, s, (configuration.speedPIDKp * 10000)))  + SEPARATOR
-          + dtostrf((configuration.speedPIDKi* 10000, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.speedPIDKd * 10000, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDConKp * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDConKi * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDConKd * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDAggKp * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDAggKi * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.anglePIDAggKd * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.TriggerAngleAggressive * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.calibratedZeroAngle * 100, 10, 3, buffer)) + SEPARATOR
-	  + configuration.FirmwareVersion;
-          Serial.println(millis()-StartL2);
+	  + (char)configuration.speedPIDKp * 10000  + SEPARATOR
+          + (char)configuration.speedPIDKi* 10000 + SEPARATOR
+          + (char)configuration.speedPIDKd * 10000 + SEPARATOR
+          + (char)configuration.anglePIDConKp * 100 + SEPARATOR
+          + (char)configuration.anglePIDConKi * 100 + SEPARATOR
+          + (char)configuration.anglePIDConKd * 100 + SEPARATOR
+          + (char)configuration.anglePIDAggKp * 100 + SEPARATOR
+          + (char)configuration.anglePIDAggKi * 100 + SEPARATOR
+          + (char)configuration.anglePIDAggKd * 100 + SEPARATOR
+          + (char)configuration.TriggerAngleAggressive * 100 + SEPARATOR
+          + (char)configuration.calibratedZeroAngle * 100 + SEPARATOR
+	  + (char)configuration.FirmwareVersion;
+          Serial.println(line);
+          //Serial.println(millis()-StartL2);
   }
 
 }
 void RemoteInit()
 {
   //These MUST be in the same order as in RemoteUpload()
- headers = 	"HEADERS" + SEPARATOR +
+ String headers = 	"HEADERS" + SEPARATOR +
 		"yaw" + SEPARATOR +
 		"pitch" + SEPARATOR +
 		"roll" + SEPARATOR +
@@ -71,7 +72,7 @@ void RemoteInit()
 		"calibratedZeroAngle"+ SEPARATOR +
 		"FirmwareVersion";
 	    Serial.println(headers);
-            Serial.print("READ Read_SPIDKp ");Serial.println(configuration.speedPIDKp * 10000);
+/*            Serial.print("READ Read_SPIDKp ");Serial.println(configuration.speedPIDKp * 10000);
             Serial.print("READ Read_SPIDKi ");Serial.println(configuration.speedPIDKi * 10000);
             Serial.print("READ Read_SPIDKd ");Serial.println(configuration.speedPIDKd * 10000);
             Serial.print("READ Read_APIDKp ");Serial.println(configuration.anglePIDConKp * 100);
@@ -84,7 +85,7 @@ void RemoteInit()
             Serial.print("READ Read_calibratedZeroAngle ");Serial.println(configuration.calibratedZeroAngle*100);
             Serial.print("READ FirmwareVersion ");Serial.println(configuration.FirmwareVersion);
             LastEvent = "System ready";
-  
+*/  
 }
 
 void setCommand() 
@@ -173,7 +174,7 @@ void setCommand()
                   }
                  else if (String("Load_def").equals(arg)){
                      setConfiguration((boolean) int(value));
-                      LastEvent= "Defaul config loaded/n";
+                      LastEvent= "Default config loaded/n";
                   }
 				
 		// steering
@@ -183,12 +184,18 @@ void setCommand()
                 configuration.steerGain = atoi(value)/100;
 		else if (String("Steer").equals(arg))
 		{//sign * value
-		  UserControl[0] = ((atoi(value)+1)/(atoi(value)+1) * max(abs(atoi(value)), configuration.Maxsteer);              
+                  if (atoi(value) != 0)
+		    UserControl[0] = ((atoi(value))/(atoi(value))) * max(abs(atoi(value)), configuration.Maxsteer);
+                  else
+                    UserControl[0] = 0;
 		}
 		else if (String("Throttle").equals(arg))
-                {
-		  UserControl[1] = ((atoi(value)+1)/(atoi(value)+1) * max(abs(atoi(value)), configuration.Maxthrottle);
-		}
+                {  
+                   if (atoi(value) != 0)
+                     UserControl[1] = ((atoi(value))/(atoi(value))) * max(abs(atoi(value)), configuration.Maxthrottle);
+		   else
+                      UserControl[1] = 0;  
+                }
 		else if (String("speedPIDOutputDebug").equals(arg))
 		configuration.speedPIDOutputDebug = atoi(value);
 		else if (String("speedPIDInputDebug").equals(arg))
@@ -281,5 +288,6 @@ controlConfig();
 
 
 }
+
 
 

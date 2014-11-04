@@ -10,10 +10,10 @@ lang="en">
     <script src="foundation/js/vendor/modernizr.js"></script>
     
   <script src="js/foundation/foundation.js"></script>
-    <script src="js/foundation/foundation.slider.js"></script>
-    <script type="text/javascript" src="/js/socket.io.js"></script>
-    <script src="jQuery/lib/jquery-1.7.1.js"></script>
-<script src="jQuery/src/rangeinput/rangeinput.js"></script>
+  <script src="js/foundation/foundation.slider.js"></script>
+  <script type="text/javascript" src="/js/socket.io.js"></script>
+  <script src="jQuery/lib/jquery-1.7.1.js"></script>
+  <script src="jQuery/src/rangeinput/rangeinput.js"></script>
 
 <link rel="stylesheet" type="text/css" href="css/RangeInputskin1.css"/>
 </head>
@@ -167,7 +167,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 	<span class="labelSwitch" >Motors</span>
 	<div class="switch round medium">
 	    <input  id="Motors" type="checkbox" onchange="MotorF(this)">
-	    <label for="Motors">Motors</label>
+	    <label for="Motors"></label>
 	      
 	</div>
 	 <span class="labelSwitch" >Auto mode</span>
@@ -330,6 +330,13 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 
 </div>
 
+
+<div class="row">
+  <div class="medium-12 columns">
+    <iframe src="http://192.168.1.145:54321/livedata" width=100% height="380" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+  </div>
+</div>
+
 <div class="row">
   <div class="medium-4 columns">
   <iframe id="videoFeed" src="http://192.168.1.145:9000/javascript_simple.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
@@ -342,11 +349,6 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
   </div>
 </div>
 
-
-<iframe src="http://192.168.1.145:54321/livedata" width=100% height="380" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
-<!-- <label>Textarea Label-->
-<!--        <textarea id="ArduLogText" placeholder="small-12.columns"></textarea>-->
-<!--      </label>-->
 <script src="foundation/js/vendor/jquery.js"></script>
 <script src="foundation/js/foundation.min.js"></script>
 <script>
@@ -355,10 +357,8 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 
 <script>
  var socket = io();
- var started = 0;
- //Slide ranges re automatically calculated as percentage of teh default config from Arduino
- var PID_SLIDE_RANGE = 0.25;
- 
+ //Slide ranges are automatically calculated as percentage of the default config from Arduino
+ var PID_SLIDE_RANGE = 0.25; 
  
 window.onload=function()
 {
@@ -367,6 +367,7 @@ window.onload=function()
     var myFunction = function() {
         var attribute = this.getAttribute("id");
         socket.emit('SCMD', this.getAttribute("id")+' '+ this.value);
+        //alert(this.getAttribute("id")+' '+ this.value);
     };
 
     for(var i=0;i<classname.length;i++){
@@ -408,45 +409,51 @@ function MotorF(element){
   }
  }
  
- function prntCfg(){
-    socket.emit('SCMD', "printConfig");    
- }
+function prntCfg(){
+    socket.emit('SCMD', "printConfig");
+    
+}
  
- function sendCMD() {
+function sendCMD() {
      //document.getElementById("CMD").innerHTML = document.getElementById("right-label").value;
       socket.emit('SCMD', document.getElementById("right-label").value);    
+}
 
- }
+socket.on('Info', function(CMD){
+    document.getElementById("Info").innerHTML = CMD;    
+});
 
-    socket.on('Info', function(CMD){
-        document.getElementById("Info").innerHTML = CMD;    
-    });
+socket.on('CMD', function(CMD){
+    document.getElementById("CMD").innerHTML = CMD;    
+});
+
+socket.on('status', function (y, p, r, b) {
+    document.getElementById("BAL").innerHTML = b;
+    document.getElementById("Pitch").innerHTML = p; 
+}); 
    
-    socket.on('CMD', function(CMD){
-        document.getElementById("CMD").innerHTML = CMD;    
-    });
-    
-     socket.on('status', function (y, p, r, b) {
-        document.getElementById("BAL").innerHTML = b;
-        document.getElementById("Pitch").innerHTML = p; 
-    }); 
-   
- socket.on('connected', function(V, ArduRead){
+ //socket.on('connected', function(V, ArduRead){
+ //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
+ //   //Set defalut values for the PID sliders
+ //   var PIDSlider = document.getElementsByClassName("PIDControlSlider");
+ //   var arrayLength = SliderID.length;
+ //   
+ //   for (var i = 0; i < arrayLength; i++) {
+ //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]);
+ //       document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
+ //       document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
+ //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]); 
+ //   }
+ //
+ //  
+ //   });
+
+  socket.on('connected', function(V, ArduRead){
     started=0;
-    document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
-    
-    //Set defalut values for the PID sliders
-    var PIDSlider = document.getElementsByClassName("PIDControlSlider");
-    var arrayLength = SliderID.length;
-    
-    for (var i = 0; i < arrayLength; i++) {
-        document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]);
-        document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
-        document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
-        document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]); 
-    }
-
-    /*    document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
+    //console.log(ArduRead['anglePIDConKp']);
+    document.getElementById("Info").innerHTML = V + ' F: ' + ArduRead['READ FirmwareVersion'];
+    //Bulky, try to go with get elemnts by class and for...
+    document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
     document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
     document.getElementById('APIDConKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
     document.getElementById('APIDConKpVal').value = parseInt(ArduRead['anglePIDConKp']);
@@ -460,7 +467,7 @@ function MotorF(element){
     document.getElementById('APIDConKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
     document.getElementById('APIDConKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
     document.getElementById('APIDConKdVal').value = parseInt(ArduRead['anglePIDConKd']);
-   
+    
     document.getElementById('APIDAggKp').value = parseInt(ArduRead['anglePIDAggKp']);    
     document.getElementById('APIDAggKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
     document.getElementById('APIDAggKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
@@ -495,7 +502,7 @@ function MotorF(element){
     document.getElementById('calibratedZeroAngle').value = parseInt(ArduRead['calibratedZeroAngle']);
     document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
     document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); */
+    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); 
     });
 
 </script>

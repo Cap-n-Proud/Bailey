@@ -208,10 +208,6 @@ TimedAction RemoteUploadTimedAction = TimedAction(150, RemoteUpload);
 //Swarn Particle Optimization
 TimedAction SwarnTimedAction = TimedAction(2000, SPO);
 
-if (LCD_Output){
- TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
-}
-
 SerialCommand SCmd;   // The SerialCommand object
 
 // imu variables
@@ -247,8 +243,10 @@ FreeSixIMU sixDOF = FreeSixIMU();
 //char notes[] = "ccggaagffeeddc "; // a space represents a rest
 //int beats[] = { 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 4 };
 //int tempo = 300;
+ TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
 
 void setup() { 
+
 
   //pinMode(configuration.speakerPin, OUTPUT);
 
@@ -345,7 +343,7 @@ void loop() {
   // remoteControlWatchdogTimedAction.check();
   }
   
- {
+
     // Speed pid,  input is wheel speed, output is angleSetpoint
     speedPIDSetpoint = 0;
     speedPID.Compute();
@@ -373,7 +371,7 @@ void loop() {
       motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
       motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
     }
-  }
+
   else{
     motorLeft.setSpeed(0);
     motorRight.setSpeed(0); 
@@ -417,3 +415,4 @@ void LCDUpdate() {
   LCDSerial.print(pitch,1);
 
 }
+

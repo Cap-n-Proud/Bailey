@@ -73,13 +73,6 @@ void debugSensorValues() {
   Serial.print(configuration.anglePIDConKd, 2);
  }
  
-
- void debugMotorCalibrations() {
- Serial.print("\tm1 C: ");
- printFloat(motor1Calibration, 4);
- Serial.print("\tm2 C: ");
- printFloat(motor2Calibration, 4);
- }
  void debugMotorSpeeds() {
  Serial.print("\tlmS: ");
  printFloat(leftMotorSpeed, 4);
@@ -117,11 +110,6 @@ void  debugSteerThrottle() {
  }
  
  void debugMotorSpeedCalibration() {
- Serial.print("\t");
- Serial.print(anglePIDOutput*motor1Calibration);
- Serial.print("\t");
- Serial.print(anglePIDOutput*motor2Calibration);
- Serial.print("\t");
  Serial.print(rightMotorSpeed);
  Serial.print("\t");
  Serial.print(leftMotorSpeed);
@@ -211,4 +199,5 @@ void  debugSteerThrottle() {
  //Serial.print("speedPIDOutputDebug: ");
 
  }
+
 

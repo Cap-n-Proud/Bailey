@@ -10,7 +10,19 @@ var com = require("/usr/local/lib/node_modules/serialport");
 var serPort = "/dev/ttyACM0";
 var serBaud = 38400;
 var serverPort = 54321;
-
+function greetings() {
+  console.log("__        __   _                            _              ");
+  console.log("\ \      / /__| | ___ ___  _ __ ___   ___  | |_ ___        ");
+  console.log("\ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \ | __/ _ \       ");
+  console.log("\ V  V /  __/ | (_| (_) | | | | | |  __/ | || (_) |      ");
+  console.log("\_/\_/ \___|_|\___\___/|_| |_| |_|\___|  \__\___/       ");
+  console.log("____        _ _                                         ");  
+  console.log("| __ )  __ _(_) | ___ _   _   ___  ___ _ ____   _____ _ __ ");
+  console.log(" |  _ \ / _` | | |/ _ \ | | | / __|/ _ \ '__\ \ / / _ \ '__|");
+  console.log("| |_) | (_| | | |  __/ |_| | \__ \  __/ |   \ V /  __/ | ");  
+  console.log(" |____/ \__,_|_|_|\___|\__, | |___/\___|_|    \_/ \___|_|");   
+  console.log("                      |___/                               ");
+}
 var LogR = 0;
 var TelemetryFN = "";
 var prevTel="";
@@ -52,6 +64,10 @@ app.get('/', function(req, res){
   res.end;
 });
 
+app.get('/found', function(req, res){
+  res.sendFile(__dirname + '/public/index.html');
+  res.end;
+});
 app.get('/d3test', function(req, res) {
   res.sendFile(__dirname + '/public/d3test.html');
   res.end;
@@ -108,23 +124,13 @@ app.get('/REBOOT', function(req, res) {
 // Logging middleware
 
 
-var logF = function(data){  
+var logF = function(){  
  
      if (LogR == 1 && prevPitch != ArduRead['pitch'])
      {
       prevPitch = ArduRead['pitch']
       LogRow = new Date().getTime() + SEPARATOR;
-		
-        /*for(var prop in ArduRead)
-	{
-	  if (ArduRead[prop] != undefined)
-	  { 
-	    if(ArduRead.hasOwnProperty(prop)){
-		LogRow = LogRow + ArduRead[prop].toString().trim() + ','
-	    }
-  	  }
-  	}*/
-	LogRow = LogRow + data;
+      LogRow = LogRow + data;
   fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
 		  if (err) {
 		  console.log('ERROR: ' + err);
@@ -163,7 +169,7 @@ io.on('connection', function(socket){
     exec('sudo bash /home/pi/Documents/Sketches/Bailey/server/scripts/' + Video, puts);
       });
   
-  //Set commands goes to arduino directly
+  //Set commands goes to Arduino directly
   socket.on('SCMD', function(CMD){
     console.log(CMD);
     serialPort.write('SCMD ' + CMD + '\n');
@@ -231,18 +237,23 @@ io.on('disconnect', function () {
     });
 
 http.listen(serverPort, function(){
-console.log('listening on *: ', serverPort);// 
+console.log('listening on *: ', serverPort);//
+greetings();  
   
 //Read input from Arduino and stores it into a dictionary
 serialPort.on('data', function(data, socket) {	 	
-	if (data.match(/ /g) && data.match(/T/g))
+	console.log(data);
+	if (data.indexOf('T') !== -1)
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
+	  
 	  for (var i in ArduRead) {
 	    ArduRead[i] = tokenData[j];
-	    j++; 
+	    j++;
+	    console.log(i + ' ' + ArduRead[i]);
 	  }
+	  j = 0;
 	  eventEmitter.emit('log');
 	}
 	
@@ -263,7 +274,7 @@ serialPort.on('data', function(data, socket) {
 	}
 	
 	if (LogR == 1){
-	  logF;
+	  //logF;
 	}
 });
  
