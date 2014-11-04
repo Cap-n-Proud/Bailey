@@ -21,6 +21,7 @@ int lastDebugEncoders = 0;
 
 }
 
+//Updates the motor speeds and teh SpeedPID input
 void updateMotorSpeeds() {
   leftMotorPosition = - MotorLeft.read(); //The minus sign is needed as the motor directions are opposite
   rightMotorPosition = MotorRight.read();

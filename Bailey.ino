@@ -30,17 +30,15 @@
 
 L29x motorRight(8, 9, 10); // enable (PWM), motor pin 1, motor pin 2
 L29x motorLeft(11, 12, 13);
- // enable (PWM), motor pin 1, motor pin 2
+// enable (PWM), motor pin 1, motor pin 2
 
 //Button motorBtn(13, false, false, 20);
 const uint8_t LED_PIN = 13;
-String SEPARATOR = ",";
+String SEPARATOR = ","; //Used as separator for telemetry
 
 // Tell it where to store your config data in EEPROM
 boolean LCD_Output = false;
 int debug = 0;
-
-boolean started = true; // if the robot is started or not
 
 /* Configutation parameters */
 struct Configuration {
@@ -92,7 +90,6 @@ Configuration configuration;
 byte b[sizeof(Configuration)];
 
 double UserControl[1]; //Steer, Throttle
-//memset(UserControl,0,sizeof(UserControl));
 
 void setConfiguration(boolean force) {
   /* Flash is erased every time new code is uploaded. Write the default configuration to flash if first time */
@@ -102,11 +99,8 @@ void setConfiguration(boolean force) {
     if (configuration.debug){
       Serial.print("No config found, defaulting ");
     }
-    /* OK first time running, set defaults */
-    configuration.FirmwareVersion = "0.5";
-    configuration.speedPIDKp = 0.5540;
-    configuration.speedPIDKi = 0.133; //0.0051
-    configuration.speedPIDKd = 0.0023;
+    /* First time running, set defaults */
+    configuration.FirmwareVersion = "0.9";
     configuration.speedPIDOutputLowerLimit = -10.00; //Default was -5
     configuration.speedPIDOutputHigherLimit = 10.00;
     configuration.anglePIDAggKp = 19.70;
@@ -115,27 +109,33 @@ void setConfiguration(boolean force) {
     configuration.anglePIDConKp = 7.28;
     configuration.anglePIDConKi = 2.60;
     configuration.anglePIDConKd = 0.48;
+    configuration.speedPIDKp = 0.5540;
+    configuration.speedPIDKi = 0.133; //0.0051
+    configuration.speedPIDKd = 0.0023;
     configuration.anglePIDOutputLowerLimit = -100;
     configuration.anglePIDOutputHigherLimit = 100;
+    
+    configuration.motorLeftMinimumSpeed = 55;//40;
+    configuration.motorRightMinimumSpeed = 58;//44;
+    configuration.steerGain = 1;
+    configuration.throttleGain = 1;
+    configuration.Maxsteer = 15; //Max allowed percentage difference. Up to the remote to provide the right scale.  
+    configuration.Maxthrottle = 1; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    
+    configuration.motorsON = 0;
+    configuration.debug = 0;
+  
     configuration.TriggerAngleAggressive = 7.50;
     configuration.calibratedZeroAngle = 1.8;
+    
     configuration.anglePIDSampling = 10;
-    configuration.speedPIDSampling = 15;
+    configuration.speedPIDSampling = 10;
+  
     configuration.angleKalmanFilterR = 10.00;
     configuration.angleSensorSampling = 5;
     configuration.motorSpeedSensorSampling = 5;
     configuration.speedKalmanFilterR = 20.00;
-    configuration.motorLeftMinimumSpeed = 55;//40;
-    configuration.motorRightMinimumSpeed = 58;//44;
-    configuration.steerGain = 0.1;
-    configuration.throttleGain = 1;
-    configuration.Maxsteer = 30;
-    configuration.Maxthrottle = 30;
-    
-    configuration.motorsON = 0;
-
-    configuration.debug = 0;
-    
+      
     configuration.debugLevel = 0;
     configuration.debugSampleRate = 50;
     //  configuration.speedPIDSetpointDebug = 1;
@@ -150,18 +150,16 @@ void setConfiguration(boolean force) {
     configuration.angleRawDebug = 1;
     configuration.activePIDTuningDebug = 1;
     //configuration.speakerPin = 13;
+    
     saveConfig();
     delay(100);
   }
   else {
     if (debug)
       Serial.println("Config found");
-
     loadConfig();
   }
 };
-
-
 
 /* Encoders */
 
@@ -190,25 +188,29 @@ volatile long rightMotorPosition = 0;
 float motorSpeed;
 float leftMotorSpeed;
 float rightMotorSpeed;
-float motor1Calibration = 1;
-float motor2Calibration = 1;
+
 float speedKalmanFiltered = 0;
 float speedFIRFiltered = 0;
 
-// these take care of the timing of things
-TimedAction debugTimedAction = TimedAction(1000, debugEverything);
-TimedAction updateMotorStatusesTimedAction = TimedAction(20, updateMotorSpeeds);
+// These take care of the timing of things
+TimedAction debugTimedAction = TimedAction(1000, debugEverything); //Print debug info
+TimedAction updateMotorStatusesTimedAction = TimedAction(20, updateMotorSpeeds); //
 TimedAction updateIMUSensorsTimedAction = TimedAction(20, updateIMUSensors);
+
 //TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
+
 //Reads serial for commands
 TimedAction RemoteReadTimedAction = TimedAction(50, RemoteRead);
+
 //Upload telemetry data
 TimedAction RemoteUploadTimedAction = TimedAction(150, RemoteUpload);
-//Refresh the current settings on teh remote. Used for debug
-TimedAction settingsUploadTimedAction = TimedAction(1000, RemoteInit);
+
+//Swarn Particle Optimization
 TimedAction SwarnTimedAction = TimedAction(2000, SPO);
 
-//TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
+if (LCD_Output){
+ TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
+}
 
 SerialCommand SCmd;   // The SerialCommand object
 
@@ -235,7 +237,7 @@ KalmanFilter angleKalmanFilter;
 KalmanFilter balanceKalmanFilter;
 FIR speedMovingAvarageFilter2;
 
-// The cascading PIDs. The tunings are updated from the code
+// The cascading PIDs. The tunings are updated from the remote
 PID anglePID(&anglePIDInput, &anglePIDOutput, &anglePIDSetpoint, 0, 0, 0, DIRECT); //REVERSE???
 PID speedPID(&speedPIDInput, &speedPIDOutput, &speedPIDSetpoint, 0, 0, 0, DIRECT);
 
@@ -248,13 +250,11 @@ FreeSixIMU sixDOF = FreeSixIMU();
 
 void setup() { 
 
-  // pinMode(configuration.speakerPin, OUTPUT);
-  //motorLeft.setSpeed(0);
-  //motorRight.setSpeed(0);
+  //pinMode(configuration.speakerPin, OUTPUT);
 
   Serial.begin(38400);
   delay(50);
-  Serial.println("connection estabilished");
+  //Serial.println("connection estabilished");
   if (LCD_Output)
   {
     LCDSerial.begin(9600); // set up serial port for 9600 baud
@@ -265,7 +265,7 @@ void setup() {
     LCDSerial.print("Init. sequence");
   }
 
-  // load config from eeprom
+  // Load config from eeprom
   setConfiguration(false);
   // init i2c and IMU
   delay(100);
@@ -273,7 +273,7 @@ void setup() {
 
   //Init control systems
   controlConfig();
-  // init the timers
+  //Init the timers
   initTimedActions();
 
   // filters
@@ -285,11 +285,11 @@ void setup() {
   //speedMovingAvarageFilter2.setNumberOfTaps(9);
   speedMovingAvarageFilter2.setGain((float) (1/9));
 
-  Serial.println("IMU...");
+  //Serial.println("IMU...");
   delay(50);
   sixDOF.init(); //begin the IMU
   delay(150);
- Serial.println("OK...");
+  //Serial.println("OK...");
   if (LCD_Output){
     clearLCD(); 
     LCDSerial.print(" IMU");  
@@ -313,17 +313,16 @@ void setup() {
   //play(notes, beats);
 }
 
-
 void updateIMUSensors() {
   double angleT;
   sixDOF.getYawPitchRoll(ypr);
-  roll=ypr[1];
-  pitch=ypr[2];
-  yaw=ypr[0];
-  angleT = pitch - configuration.calibratedZeroAngle;
+  roll = ypr[1];
+  pitch = ypr[2];
+  yaw = ypr[0];
+  angleT = pitch; 
   // move angle to around equilibrium
   angleKalmanFilter.correct(angleT);
-  anglePIDInput = angleKalmanFilter.getState();
+  anglePIDInput = angleKalmanFilter.getState() - configuration.calibratedZeroAngle + configuration.throttleGain*UserControl[1]; //Need to add the input throttle 
 }
 
 
@@ -331,9 +330,9 @@ void loop() {
   wdt_reset();
   StartL = millis();
   
-  //if (LCD_Output)
-  // LCDUpdateTimedAction.check();
-
+  if (LCD_Output){
+   LCDUpdateTimedAction.check();
+  }
 
   // update sensors and motors, also chek commands and send back telemetry
   updateIMUSensorsTimedAction.check();
@@ -342,18 +341,17 @@ void loop() {
   RemoteUploadTimedAction.check();
   
   if (AUTOTUNE==1) {
-   // SwarnTimedAction.check();
-    
+   // SwarnTimedAction.check();    
   // remoteControlWatchdogTimedAction.check();
   }
-  if (started) {
-    // speed pid. input is wheel speed. output is angleSetpoint
-    speedPIDSetpoint = 0;//configuration.throttleGain*UserControl[1];
+  
+ {
+    // Speed pid,  input is wheel speed, output is angleSetpoint
+    speedPIDSetpoint = 0;
     speedPID.Compute();
     anglePIDSetpoint = - speedPIDOutput;
 
-    // update angle pid tuning
-
+    // Update angle pid tuning
    if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0) { 
       //we're close to setpoint, use conservative tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDConKp, (float)configuration.anglePIDConKi, (float)configuration.anglePIDConKd);
@@ -372,8 +370,8 @@ void loop() {
     //angleKalmanFilter.correct(anglePIDOutput);
     //anglePIDOutput = angleKalmanFilter.getState();
     if (configuration.motorsON==1){
-      motorLeft.setSpeedPercentage(-anglePIDOutput);// - configuration.steerGain * (UserControl[0]) + configuration.throttleGain*UserControl[1]);
-      motorRight.setSpeedPercentage(-anglePIDOutput);// + configuration.steerGain * (UserControl[0]) + configuration.throttleGain*UserControl[1]);
+      motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
+      motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
     }
   }
   else{
@@ -419,6 +417,3 @@ void LCDUpdate() {
   LCDSerial.print(pitch,1);
 
 }
-
-
-

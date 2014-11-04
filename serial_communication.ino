@@ -5,14 +5,12 @@ void RemoteRead(){
   SCmd.readSerial();     // We don't do much, just process serial commands 
 }
 
-
  void printCommand() {
 	char *arg = SCmd.next();
 
 	
  }
  
-
 void RemoteUpload()
 { //http://forum.arduino.cc/index.php?topic=85523.0
   char *arg = SCmd.next();
@@ -21,16 +19,17 @@ void RemoteUpload()
           balanceKalmanFilter.correct(dISTE);
           char buffer[10];
            StartL2= millis();
-            line = dtostrf(yaw, 10, 3, buffer) + SEPARATOR
+            line = "T" + SEPARATOR
+	  +  dtostrf(yaw, 10, 3, buffer) + SEPARATOR
           + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
           + dtostrf(roll, 10, 3, buffer) + SEPARATOR
-          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
           + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
           + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
           + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
           + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
           + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + dtostrf((configuration.speedPIDKp * 10000), 10, 3, buffer))  + SEPARATOR
+          + LoopT + SEPARATOR
+	  + dtostrf(buffer, s, (configuration.speedPIDKp * 10000)))  + SEPARATOR
           + dtostrf((configuration.speedPIDKi* 10000, 10, 3, buffer)) + SEPARATOR
           + dtostrf((configuration.speedPIDKd * 10000, 10, 3, buffer)) + SEPARATOR
           + dtostrf((configuration.anglePIDConKp * 100, 10, 3, buffer)) + SEPARATOR
@@ -40,31 +39,38 @@ void RemoteUpload()
           + dtostrf((configuration.anglePIDAggKi * 100, 10, 3, buffer)) + SEPARATOR
           + dtostrf((configuration.anglePIDAggKd * 100, 10, 3, buffer)) + SEPARATOR
           + dtostrf((configuration.TriggerAngleAggressive * 100, 10, 3, buffer)) + SEPARATOR
-          + dtostrf((configuration.calibratedZeroAngle * 100, 10, 3, buffer)) + SEPARATOR                                           
-          + LoopT;
+          + dtostrf((configuration.calibratedZeroAngle * 100, 10, 3, buffer)) + SEPARATOR
+	  + configuration.FirmwareVersion;
           Serial.println(millis()-StartL2);
-          /*
-           line = dtostrf(yaw, 10, 3, buffer)+ SEPARATOR
-          + dtostrf(pitch, 10, 3, buffer)+ SEPARATOR
-          + dtostrf(roll, 10, 3, buffer)+ SEPARATOR
-          + dtostrf(pitch, 10, 3, buffer)+ SEPARATOR
-          + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR;
-          Serial.print(line); 
-          
-
-          + LoopT;
-          pitch + SEPARATOR
-
-                 + LoopT + SEPARATOR
-                 
-                */
-        
-}
+  }
 
 }
 void RemoteInit()
 {
- 
+  //These MUST be in the same order as in RemoteUpload()
+ headers = 	"HEADERS" + SEPARATOR +
+		"yaw" + SEPARATOR +
+		"pitch" + SEPARATOR +
+		"roll" + SEPARATOR +
+		"bal" + SEPARATOR +
+		"dISTE" + SEPARATOR +
+		"anglePIDOutput" + SEPARATOR +
+		"leftMotorSpeed" + SEPARATOR +
+		"rightMotorSpeed" + SEPARATOR +
+		"LoopT"+ SEPARATOR +
+		"speedPIDKp" + SEPARATOR +
+		"speedPIDKi" + SEPARATOR +
+		"speedPIDKd" + SEPARATOR +
+		"anglePIDConKp" + SEPARATOR +
+		"anglePIDConKi" + SEPARATOR +
+		"anglePIDConKd" + SEPARATOR +
+		"anglePIDAggKp" + SEPARATOR +
+		"anglePIDAggKi" + SEPARATOR +
+		"anglePIDAggKd" + SEPARATOR +
+		"TriggerAngleAggressive" + SEPARATOR +
+		"calibratedZeroAngle"+ SEPARATOR +
+		"FirmwareVersion";
+	    Serial.println(headers);
             Serial.print("READ Read_SPIDKp ");Serial.println(configuration.speedPIDKp * 10000);
             Serial.print("READ Read_SPIDKi ");Serial.println(configuration.speedPIDKi * 10000);
             Serial.print("READ Read_SPIDKd ");Serial.println(configuration.speedPIDKd * 10000);
@@ -176,10 +182,14 @@ void setCommand()
 		else if (String("SetthrottelGain").equals(arg))
                 configuration.steerGain = atoi(value)/100;
 		else if (String("Steer").equals(arg))
-                UserControl[0] = min(atoi(value), configuration.Maxsteer);              
+		{//sign * value
+		  UserControl[0] = ((atoi(value)+1)/(atoi(value)+1) * max(abs(atoi(value)), configuration.Maxsteer);              
+		}
 		else if (String("Throttle").equals(arg))
-                UserControl[1] = min(atoi(value), configuration.Maxthrottle = 50);
-  		else if (String("speedPIDOutputDebug").equals(arg))
+                {
+		  UserControl[1] = ((atoi(value)+1)/(atoi(value)+1) * max(abs(atoi(value)), configuration.Maxthrottle);
+		}
+		else if (String("speedPIDOutputDebug").equals(arg))
 		configuration.speedPIDOutputDebug = atoi(value);
 		else if (String("speedPIDInputDebug").equals(arg))
 		configuration.speedPIDInputDebug= atoi(value);

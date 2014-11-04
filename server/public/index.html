@@ -362,21 +362,16 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
  
 window.onload=function()
 {
- //document.getElementById("Info").innerHTML = "Loaded";
-       
  var classname = document.getElementsByClassName("PIDControlSlider");
 
     var myFunction = function() {
         var attribute = this.getAttribute("id");
-        //alert(attribute);
-        //document.getElementById("CMD").innerHTML = this.getAttribute("id")+' '+ this.value;
         socket.emit('SCMD', this.getAttribute("id")+' '+ this.value);
     };
 
     for(var i=0;i<classname.length;i++){
         classname[i].addEventListener('change', myFunction, false);
     }
-  //run code 
 }
 
  function VideoF(element){
@@ -438,58 +433,69 @@ function MotorF(element){
    
  socket.on('connected', function(V, ArduRead){
     started=0;
-    document.getElementById("Info").innerHTML = V + ' F: ' + ArduRead['READ FirmwareVersion'];
-    //Bulky, try to go with get elemnts by class and for...
-    document.getElementById('APIDConKp').value = parseInt(ArduRead['READ Read_APIDKp']);
-    document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKp']);
-    document.getElementById('APIDConKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKp']);
-    document.getElementById('APIDConKpVal').value = parseInt(ArduRead['READ Read_APIDKp']);
+    document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
+    
+    //Set defalut values for the PID sliders
+    var PIDSlider = document.getElementsByClassName("PIDControlSlider");
+    var arrayLength = SliderID.length;
+    
+    for (var i = 0; i < arrayLength; i++) {
+        document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]);
+        document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
+        document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
+        document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]); 
+    }
+
+    /*    document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKpVal').value = parseInt(ArduRead['anglePIDConKp']);
    
-    document.getElementById('APIDConKi').value = parseInt(ArduRead['READ Read_APIDKi']);
-    document.getElementById('APIDConKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKi']);
-    document.getElementById('APIDConKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKi']);
-    document.getElementById('APIDConKiVal').value = parseInt(ArduRead['READ Read_APIDKi']);
+    document.getElementById('APIDConKi').value = parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKiVal').value = parseInt(ArduRead['anglePIDConKi']);
    
-    document.getElementById('APIDConKd').value = parseInt(ArduRead['READ Read_APIDKd']);
-    document.getElementById('APIDConKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKd']);
-    document.getElementById('APIDConKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDKd']);
-    document.getElementById('APIDConKdVal').value = parseInt(ArduRead['READ Read_APIDKd']);
+    document.getElementById('APIDConKd').value = parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKdVal').value = parseInt(ArduRead['anglePIDConKd']);
    
-    document.getElementById('APIDAggKp').value = parseInt(ArduRead['READ Read_APIDAggKp']);    
-    document.getElementById('APIDAggKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKp']);    
-    document.getElementById('APIDAggKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKp']);    
-    document.getElementById('APIDAggKpVal').value = parseInt(ArduRead['READ Read_APIDAggKp']);    
+    document.getElementById('APIDAggKp').value = parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKpVal').value = parseInt(ArduRead['anglePIDAggKp']);    
    
-    document.getElementById('APIDAggKi').value = parseInt(ArduRead['READ Read_APIDAggKi']);
-    document.getElementById('APIDAggKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKi']);
-    document.getElementById('APIDAggKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKi']);
-    document.getElementById('APIDAggKiVal').value = parseInt(ArduRead['READ Read_APIDAggKi']);
+    document.getElementById('APIDAggKi').value = parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKiVal').value = parseInt(ArduRead['anglePIDAggKi']);
    
-    document.getElementById('APIDAggKd').value = parseInt(ArduRead['READ Read_APIDAggKd']);
-    document.getElementById('APIDAggKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKd']);
-    document.getElementById('APIDAggKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_APIDAggKd']);
-    document.getElementById('APIDAggKdVal').value = parseInt(ArduRead['READ Read_APIDAggKd']);
+    document.getElementById('APIDAggKd').value = parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKdVal').value = parseInt(ArduRead['anglePIDAggKd']);
    
-    document.getElementById('SPIDKp').value = parseInt(ArduRead['READ Read_SPIDKp']);     
-    document.getElementById('SPIDKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKp']);     
-    document.getElementById('SPIDKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKp']);     
-    document.getElementById('SPIDKpVal').value = parseInt(ArduRead['READ Read_SPIDKp']);    
+    document.getElementById('SPIDKp').value = parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKpVal').value = parseInt(ArduRead['speedPIDKp']);    
    
-    document.getElementById('SPIDKi').value = parseInt(ArduRead['READ Read_SPIDKi']);
-    document.getElementById('SPIDKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKi']);
-    document.getElementById('SPIDKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKi']);
-    document.getElementById('SPIDKiVal').value = parseInt(ArduRead['READ Read_SPIDKi']);
+    document.getElementById('SPIDKi').value = parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKiVal').value = parseInt(ArduRead['speedPIDKi']);
    
    //Check how it get multplied in Arduino, does not increment enought
-    document.getElementById('SPIDKd').value = parseInt(ArduRead['READ Read_SPIDKd']);
-    document.getElementById('SPIDKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKd']);
-    document.getElementById('SPIDKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_SPIDKd']);
-    document.getElementById('SPIDKdVal').value = parseInt(ArduRead['READ Read_SPIDKd']);
+    document.getElementById('SPIDKd').value = parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKdVal').value = parseInt(ArduRead['speedPIDKd']);
    
-    document.getElementById('calibratedZeroAngle').value = parseInt(ArduRead['READ Read_calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['READ Read_calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['READ Read_calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').value = parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); */
     });
 
 </script>

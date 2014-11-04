@@ -16,35 +16,11 @@ var TelemetryFN = "";
 var prevTel="";
 var prevPitch="";
 
-var version = "0.1";
+var SEPARATOR = ","
+var version = "0.2";
 
-var ArduRead = new Object();
-{
-ArduRead['READ Read_LMO'] = 0;
-ArduRead['READ Read_RMO'] = 0;
-ArduRead['READ Read_anglePIDOutput']=0;
-ArduRead['READ Read_APIDKp'] = 0;
-ArduRead['READ Read_APIDKi'] = 0;
-ArduRead['READ Read_APIDKd'] = 0;
-ArduRead['READ Read_APIDAggKp']=0;
-ArduRead['READ Read_APIDAggKi']=0;
-ArduRead['READ Read_APIDAggKd']=0;
-ArduRead['READ Read_SPIDKp']=0;
-ArduRead['READ Read_SPIDKi']=0;
-ArduRead['READ Read_SPIDKd']=0;
-ArduRead['READ Read_Yaw']=0;
-ArduRead['READ Read_Roll']=0;
-ArduRead['READ Read_Pitch']=0;
-ArduRead['READ Read_MotorsON']='0';
-ArduRead['READ Read_LoopT']=0;
-ArduRead['READ Read_SetsteerGain']=0;
-ArduRead['READ Read_SetthrottleGain']=0;
-ArduRead['READ Read_TriggerAngleAggressive']=0;
-ArduRead['READ Read_Info']='Waiting for socket';
-ArduRead['READ Read_ISTE']=0;
-ArduRead['READ Read_BAL']=0;
-ArduRead['READ FirmwareVersion']='N/A';
-}
+var ArduHeader;
+var ArduRead = {};
 
 var serialPort = new com.SerialPort(serPort, {
   baudrate: serBaud,
@@ -76,20 +52,21 @@ app.get('/', function(req, res){
   res.end;
 });
 
-app.get('/d3', function(req, res) {
-  res.sendFile(__dirname + '/public/D3.html');
-  res.end;
-});
-
-app.get('/d3t', function(req, res) {
+app.get('/d3test', function(req, res) {
   res.sendFile(__dirname + '/public/d3test.html');
   res.end;
 });
 
-app.get('/lv2', function(req, res) {
+
+app.get('/livedata', function(req, res) {
+  res.sendFile(__dirname + '/public/livedata.htm');
+  res.end;
+});
+app.get('/livedatav2', function(req, res) {
   res.sendFile(__dirname + '/public/livedata2.htm');
   res.end;
 });
+
 app.get('/ypr', function(req, res) {
   res.sendFile(__dirname + '/public/ypr2.htm');
   res.end;
@@ -97,16 +74,6 @@ app.get('/ypr', function(req, res) {
 
 app.get('/test', function(req, res) {
   res.sendFile(__dirname + '/public/test.htm');
-  res.end;
-});
-
-app.get('/livedata', function(req, res) {
-  res.sendFile(__dirname + '/public/livedata.htm');
-  res.end;
-});
-
-app.get('/found', function(req, res) {
-  res.sendFile(__dirname + '/public/index.html');
   res.end;
 });
 
@@ -141,14 +108,14 @@ app.get('/REBOOT', function(req, res) {
 // Logging middleware
 
 
-var logF = function(){  
+var logF = function(data){  
  
-     if (LogR == 1 && prevPitch != ArduRead['READ Read_Pitch'])
+     if (LogR == 1 && prevPitch != ArduRead['pitch'])
      {
-      prevPitch = ArduRead['READ Read_Pitch']
-      LogRow = new Date().getTime() + ',';
+      prevPitch = ArduRead['pitch']
+      LogRow = new Date().getTime() + SEPARATOR;
 		
-        for(var prop in ArduRead)
+        /*for(var prop in ArduRead)
 	{
 	  if (ArduRead[prop] != undefined)
 	  { 
@@ -156,7 +123,8 @@ var logF = function(){
 		LogRow = LogRow + ArduRead[prop].toString().trim() + ','
 	    }
   	  }
-  	}
+  	}*/
+	LogRow = LogRow + data;
   fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
 		  if (err) {
 		  console.log('ERROR: ' + err);
@@ -167,8 +135,9 @@ var logF = function(){
   fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
     }
   };
+
 //Triggered when new data cames from the serial port
-eventEmitter.on('log', logF);
+//eventEmitter.on('log', logF);
  
 io.on('connection', function(socket){
   socket.emit('connected', version, ArduRead);  
@@ -177,10 +146,10 @@ io.on('connection', function(socket){
   
   //var LogRow;  
   setInterval(function(){
-   socket.emit('status', ArduRead['READ Read_Yaw'], ArduRead['READ Read_Pitch'], ArduRead['READ Read_Roll'], ArduRead['READ Read_BAL']);
-  }, 300);
+   socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal']);
+  }, 250);
  
-  //This needs to be changed to SCMD command
+//This needs to be changed to SCMD command
 //  socket.on('move', function(dX, dY){
 //	
 //	//console.log('event: ', dX, dY);
@@ -231,14 +200,24 @@ io.on('connection', function(socket){
         LogR = 1;
       }
     else if ( CMD == "LOG_OFF" ){
-       console.log("Log Stopped");
-	socket.emit('Info', "stop")
-       
-       
-   LogR = 0;
+	console.log("Log Stopped");
+	socket.emit('Info', "stop");     
+	LogR = 0;
     }
       });
 
+  socket.on('REBOOT', function(){
+    function puts(error, stdout, stderr) { sys.puts(stdout) }
+    exec('sudo reboot now');
+    sockets.emit('Info', "Rebooting")
+  });
+
+  socket.on('SHUTDOWN', function(){
+    function puts(error, stdout, stderr) { sys.puts(stdout) }
+    exec('sudo shutdown');
+    sockets.emit('Info', "Bailey going down for maintenance now")
+  });
+  
   socket.on('disconnect', function(){
     console.log('Disconnected id: %s', socket.id);
 
@@ -255,23 +234,37 @@ http.listen(serverPort, function(){
 console.log('listening on *: ', serverPort);// 
   
 //Read input from Arduino and stores it into a dictionary
-serialPort.on('data', function(data, socket) {
-	//console.log(data);
-	 	
-	if (data.match(/ /g) && data.match(/READ/g))
+serialPort.on('data', function(data, socket) {	 	
+	if (data.match(/ /g) && data.match(/T/g))
 	{
-	  var tokenData = data.split(" ");
-	  ArduRead[tokenData[0] + ' ' + tokenData[1]] = tokenData[2];                                      
+	  var tokenData = data.split(SEPARATOR);
+	  var j = 0;
+	  for (var i in ArduRead) {
+	    ArduRead[i] = tokenData[j];
+	    j++; 
+	  }
 	  eventEmitter.emit('log');
-	  //eventEmitter.emit('BalancingIndex');
-	  
 	}
+	
+	//If the first word is '***' prints in the server console. Used to debug the config from Arduino
 	if (data.indexOf('***') !== -1)
 	{
-	  console.log(data);
-	  
+	  console.log(data);	  
 	}
-
+	
+	//Get the header for the object that stores telemetry data
+	if (data.indexOf('HEADER') !== -1)
+	{
+	  ArduHeader = data.split(SEPARATOR);
+	  var arrayLength = ArduHeader.length;
+	  for (var i = 0; i < arrayLength; i++) {
+	    ArduRead[ArduHeader[i]] = "N/A";
+	  }
+	}
+	
+	if (LogR == 1){
+	  logF;
+	}
 });
  
 });

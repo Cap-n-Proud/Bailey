@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<p id="demo"></p>
+<p id="demo2">AAA</p>
+
+<script>
+var ArduRead = {}
+var ArduHeader;
+var data = "Saab,Volvo,BMW";
+
+  ArduHeader = data.split(",");
+	  var arrayLength = ArduHeader.length;
+	  for (var i = 0; i < arrayLength; i++) {
+	    ArduRead[ArduHeader[i]] = "BBB";
+	  }
+document.getElementById("demo2").innerHTML = ArduRead["Saab"];
+document.getElementById("demo").innerHTML = ArduHeader[1];
+
+</script>
+
+</body>
+</html>
+
