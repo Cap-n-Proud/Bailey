@@ -124,7 +124,7 @@ app.get('/REBOOT', function(req, res) {
 // Logging middleware
 
 
-var logF = function(){  
+var logF = function(data){  
  
      if (LogR == 1 && prevPitch != ArduRead['pitch'])
      {
@@ -143,7 +143,7 @@ var logF = function(){
   };
 
 //Triggered when new data cames from the serial port
-//eventEmitter.on('log', logF);
+//eventEmitter.on('log', logF(data));
  
 io.on('connection', function(socket){
   socket.emit('connected', version, ArduRead);  
@@ -252,7 +252,7 @@ serialPort.on('data', function(data, socket) {
 	    //console.log(i + ' ' + ArduRead[i]);
 	  }
 	  j = 0;
-	  eventEmitter.emit('log');
+	  eventEmitter.emit('log', data);
 	}
 	
 	//If the first word is '***' prints in the server console. Used to debug the config from Arduino
@@ -272,7 +272,16 @@ serialPort.on('data', function(data, socket) {
 	}
 	
 	if (LogR == 1){
-	  //logF;
+	  LogRow = new Date().getTime() + SEPARATOR;
+      LogRow = LogRow + data;
+  fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
+		  if (err) {
+		  console.log('ERROR: ' + err);
+		  console.log(LogRow + '\n' )
+		  LogR=0;
+		  }
+		});
+  fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
 	}
 });
  
