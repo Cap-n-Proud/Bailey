@@ -47,6 +47,8 @@
 		</div> 
 
 		<script>
+			var prevX, prevY;
+			var socket = io();
 			console.log("touchscreen is", VirtualJoystick.touchScreenAvailable() ? "available" : "not available");
 	
 			var joystick	= new VirtualJoystick({
@@ -54,25 +56,28 @@
 				mouseSupport	: true,
 			});
 			joystick.addEventListener('touchStart', function(){
-				console.log('down')
+				console.log('down');
 			})
 			joystick.addEventListener('touchEnd', function(){
 				console.log('up')
 			})
-				
-			var socket = io();
+			
+			
+			
 			setInterval(function(){
-   							
-				socket.emit('move', joystick.deltaX(), -joystick.deltaY());			
+				if (joystick.deltaX() !=0 || joystick.deltaY() !=0){
+				socket.emit('move', 15 * joystick.deltaX()/250, - joystick.deltaY()/250);				
+				}
 				var outputEl	= document.getElementById('result');
 				outputEl.innerHTML	= '<b>Result:</b> '
-					+ ' dx:'+joystick.deltaX()
-					+ ' dy:'+joystick.deltaY()
+					+ ' dx:'+ 15 * joystick.deltaX()/250
+					+ ' dy:'+  - joystick.deltaY()/250
 					+ (joystick.right()	? ' right'	: '')
 					+ (joystick.up()	? ' up'		: '')
 					+ (joystick.left()	? ' left'	: '')
 					+ (joystick.down()	? ' down' 	: '')	
 			}, 1/30 * 1000);
+			
 		</script>
 	</body>
 </html>

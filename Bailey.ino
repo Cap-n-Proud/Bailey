@@ -379,6 +379,9 @@ void loop() {
   if (configuration.debug == 1 )
     debugTimedAction.check();
 
+  UserControl[0] = 0;
+  UserControl[1] = 0;
+  
   LoopT = millis()-StartL;
   dISTE = (LoopT*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch)*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch))/1000;  
   ISTE = ISTE + dISTE;

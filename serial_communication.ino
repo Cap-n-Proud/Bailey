@@ -29,18 +29,18 @@ void RemoteUpload()
           + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
           + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
           + LoopT + SEPARATOR
-	  + (char)configuration.speedPIDKp * 10000  + SEPARATOR
-          + (char)configuration.speedPIDKi* 10000 + SEPARATOR
-          + (char)configuration.speedPIDKd * 10000 + SEPARATOR
-          + (char)configuration.anglePIDConKp * 100 + SEPARATOR
-          + (char)configuration.anglePIDConKi * 100 + SEPARATOR
-          + (char)configuration.anglePIDConKd * 100 + SEPARATOR
-          + (char)configuration.anglePIDAggKp * 100 + SEPARATOR
-          + (char)configuration.anglePIDAggKi * 100 + SEPARATOR
-          + (char)configuration.anglePIDAggKd * 100 + SEPARATOR
-          + (char)configuration.TriggerAngleAggressive * 100 + SEPARATOR
-          + (char)configuration.calibratedZeroAngle * 100 + SEPARATOR
-	  + (char)configuration.FirmwareVersion;
+	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
+          + int(configuration.speedPIDKi* 10000) + SEPARATOR
+          + int(configuration.speedPIDKd * 10000) + SEPARATOR
+          + int(configuration.anglePIDConKp * 100) + SEPARATOR
+          + int(configuration.anglePIDConKi * 100) + SEPARATOR
+          + int(configuration.anglePIDConKd * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKp * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKi * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKd * 100) + SEPARATOR
+          + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
+          + int(configuration.calibratedZeroAngle * 100) + SEPARATOR
+	  + configuration.FirmwareVersion;
           Serial.println(line);
           //Serial.println(millis()-StartL2);
   }

@@ -155,14 +155,6 @@ io.on('connection', function(socket){
    socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal']);
   }, 250);
  
-//This needs to be changed to SCMD command
-//  socket.on('move', function(dX, dY){
-//	
-//	//console.log('event: ', dX, dY);
-//	serialPort.write('SCMD Steer ' + dX + '\n');
-//	serialPort.write('SCMD Throttle ' + -dY + '\n');	
-//	});
-  
   socket.on('Video', function(Video){
    socket.emit('CMD', Video); 		
     function puts(error, stdout, stderr) { sys.puts(stdout) }
@@ -177,6 +169,12 @@ io.on('connection', function(socket){
     socket.emit('CMD', 'SCMD ' + CMD);    
       });
   
+    socket.on('move', function(dX, dY){
+	//console.log('event: ', dX, dY);
+	serialPort.write('SCMD Steer ' + dX + '\n');
+	serialPort.write('SCMD Throttle ' + -dY + '\n');	
+	});
+    
   //Server Commands
   socket.on('SerCMD', function(CMD){  
     //console.log(CMD);
@@ -242,7 +240,7 @@ greetings();
   
 //Read input from Arduino and stores it into a dictionary
 serialPort.on('data', function(data, socket) {	 	
-	console.log(data);
+	//console.log(data);
 	if (data.indexOf('T') !== -1)
 	{
 	  var tokenData = data.split(SEPARATOR);
@@ -251,7 +249,7 @@ serialPort.on('data', function(data, socket) {
 	  for (var i in ArduRead) {
 	    ArduRead[i] = tokenData[j];
 	    j++;
-	    console.log(i + ' ' + ArduRead[i]);
+	    //console.log(i + ' ' + ArduRead[i]);
 	  }
 	  j = 0;
 	  eventEmitter.emit('log');
