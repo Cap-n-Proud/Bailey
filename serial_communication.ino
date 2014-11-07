@@ -184,18 +184,23 @@ void setCommand()
                 configuration.steerGain = atoi(value)/100;
 		else if (String("Steer").equals(arg))
 		{//sign * value
-                  if (atoi(value) != 0)
-		    UserControl[0] = ((atoi(value))/(atoi(value))) * max(abs(atoi(value)), configuration.Maxsteer);
-                  else
-                    UserControl[0] = 0;
+		   UserControl[0] = (atof(value)/100) * configuration.Maxsteer;//((atof(value))/(atof(value))) * max(abs(atof(value)), configuration.Maxsteer);
+                  //Serial.println(UserControl[0]);  
 		}
+		else if (String("Maxsteer").equals(arg))
+		{//sign * value
+		   configuration.Maxsteer = atoi(value);
+		}
+
 		else if (String("Throttle").equals(arg))
-                {  
-                   if (atoi(value) != 0)
-                     UserControl[1] = ((atoi(value))/(atoi(value))) * max(abs(atoi(value)), configuration.Maxthrottle);
-		   else
-                      UserControl[1] = 0;  
+                {  //SCMD Throttle 50
+                    UserControl[1] =  (atof(value)/100) * configuration.Maxthrottle;//((atof(value))/(atof(value))) * max(abs(atof(value)), configuration.Maxthrottle);
+                  //Serial.println(UserControl[1]);  
                 }
+		else if (String("Maxthrottle").equals(arg))
+		{//sign * value
+		   configuration.Maxthrottle = atoi(value);
+		}
 		else if (String("speedPIDOutputDebug").equals(arg))
 		configuration.speedPIDOutputDebug = atoi(value);
 		else if (String("speedPIDInputDebug").equals(arg))
@@ -281,7 +286,6 @@ void setCommand()
 
 
 
-RemoteInit();
 controlConfig();
 }
 

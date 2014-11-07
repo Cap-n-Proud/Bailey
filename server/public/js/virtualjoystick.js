@@ -149,7 +149,7 @@ VirtualJoystick.prototype._onUp	= function()
 {
 	this._pressed	= false; 
 	this._stickEl.style.display	= "none";
-	
+
 	if(this._stationaryBase == false){	
 		this._baseEl.style.display	= "none";
 	

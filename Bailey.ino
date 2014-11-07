@@ -90,6 +90,7 @@ Configuration configuration;
 byte b[sizeof(Configuration)];
 
 double UserControl[1]; //Steer, Throttle
+float Thr = 0;
 
 void setConfiguration(boolean force) {
   /* Flash is erased every time new code is uploaded. Write the default configuration to flash if first time */
@@ -119,8 +120,8 @@ void setConfiguration(boolean force) {
     configuration.motorRightMinimumSpeed = 58;//44;
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
-    configuration.Maxsteer = 15; //Max allowed percentage difference. Up to the remote to provide the right scale.  
-    configuration.Maxthrottle = 1; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
+    configuration.Maxthrottle = 5; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
     
     configuration.motorsON = 0;
     configuration.debug = 0;
@@ -378,9 +379,6 @@ void loop() {
   }
   if (configuration.debug == 1 )
     debugTimedAction.check();
-
-  UserControl[0] = 0;
-  UserControl[1] = 0;
   
   LoopT = millis()-StartL;
   dISTE = (LoopT*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch)*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch))/1000;  

@@ -129,6 +129,11 @@ input[class=PIDControlSlider] {
     -webkit-appearance: slider-vertical;
     width: 20px;
     height: 250px;}
+    
+input[class=Throttle] {
+    -webkit-appearance: slider-vertical;
+    width: 20px;
+    height: 250px;}
 
 input[class=PIDControlSlider]::-webkit-slider-runnable-track {
     width: 20px;
@@ -298,9 +303,30 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
     
  </div>
      
-  <div class="medium-4 columns">
-      <iframe src="http://192.168.1.145:54321/vj" width="280" height="280" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>  
- 
+  <div class="medium-4 columns" width="280" height="280">
+     <iframe src="http://192.168.1.145:54321/vj" width="280" height="280" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>  
+  <!--
+         
+            <output id="ThrottleVal">aaa</output>&nbsp;<input type="range"
+            class="Throttle"
+            min="-100"
+             max="100"
+             step="1"
+             id="Throttle"
+            orientation="vertical"
+             oninput="ThrottleSet(Throttle.value)"
+             onmouseup="Throttle.value = 0; ThrottleVal.value = 0; ThrottleSet(Throttle.value)"/>
+            <br>
+       <output id="SteerVal">aaa</output>&nbsp;<input type="range"
+            class="AngleControlSlider"
+             min="-100"
+             max="100"
+             step="1"
+             id="Steer"
+            orientation="horizontal"
+             oninput="SteerSet(Steer.value)"
+             onmouseup="Steer.value = 0; SteerVal.value = 0; SteerSet(Steer.value)"/>
+            />-->
   </div>
 
 
@@ -330,23 +356,16 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 
 </div>
 
-
-<div class="row">
-  <div class="medium-12 columns">
-    <iframe src="http://192.168.1.145:54321/livedata" width=100% height="380" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
-  </div>
-</div>
-
 <div class="row">
   <div class="medium-4 columns">
   <iframe id="videoFeed" src="http://192.168.1.145:9000/javascript_simple.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
   </div>
-  <div class="medium-4 columns">
-    <iframe src="http://192.168.1.145:54321/ypr" width="250" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+  <div class="medium-8 columns">
+    <!--<iframe src="http://192.168.1.145:54321/ypr" width="250" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>-->
+     <iframe src="http://192.168.1.145:54321/livedata" width="550" height="380" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+
   </div>
-  <div class="medium-4 columns">
-    <iframe src="http://192.168.1.145:54321/tb" width="250" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
-  </div>
+
 </div>
 
 <script src="foundation/js/vendor/jquery.js"></script>
@@ -358,7 +377,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 <script>
  var socket = io();
  //Slide ranges are automatically calculated as percentage of the default config from Arduino
- var PID_SLIDE_RANGE = 0.25; 
+ var PID_SLIDE_RANGE = 0.50; 
  
 window.onload=function()
 {
@@ -409,6 +428,20 @@ function MotorF(element){
   }
  }
  
+function ThrottleSet(val){
+    socket.emit('SCMD', 'Throttle ' + val);
+    document.getElementById("ThrottleVal").value = val;
+    
+}
+
+function SteerSet(val){
+    socket.emit('SCMD', 'Steer ' + val);
+    document.getElementById("SteerVal").value = val;
+    
+}
+
+
+
 function prntCfg(){
     socket.emit('SCMD', "printConfig");
     

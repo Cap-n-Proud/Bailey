@@ -10,6 +10,8 @@ var com = require("/usr/local/lib/node_modules/serialport");
 var serPort = "/dev/ttyACM0";
 var serBaud = 38400;
 var serverPort = 54321;
+
+//Not nice, implement asciimo: https://github.com/Marak/asciimo
 function greetings() {
   console.log("__        __   _                            _              ");
   console.log("\ \      / /__| | ___ ___  _ __ ___   ___  | |_ ___        ");
@@ -171,8 +173,8 @@ io.on('connection', function(socket){
   
     socket.on('move', function(dX, dY){
 	//console.log('event: ', dX, dY);
-	serialPort.write('SCMD Steer ' + dX + '\n');
-	serialPort.write('SCMD Throttle ' + -dY + '\n');	
+	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n');
+	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');	
 	});
     
   //Server Commands

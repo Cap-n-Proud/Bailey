@@ -40,7 +40,7 @@
 		</style>
 	</head>
 	<body>
-		<div id="container"></div>
+		<div id="container" onmouseup="mouseUp()" onmousedown="mouseDown()"></div>
 		<div id="info">
 			
 			<span id="result"></span>
@@ -48,36 +48,41 @@
 
 		<script>
 			var prevX, prevY;
-			var socket = io();
-			console.log("touchscreen is", VirtualJoystick.touchScreenAvailable() ? "available" : "not available");
-	
-			var joystick	= new VirtualJoystick({
+				var joystick	= new VirtualJoystick({
 				container	: document.getElementById('container'),
 				mouseSupport	: true,
 			});
-			joystick.addEventListener('touchStart', function(){
-				console.log('down');
-			})
-			joystick.addEventListener('touchEnd', function(){
-				console.log('up')
-			})
+			var socket = io();
+			console.log("touchscreen is", VirtualJoystick.touchScreenAvailable() ? "available" : "not available");
+	
 			
 			
 			
 			setInterval(function(){
 				if (joystick.deltaX() !=0 || joystick.deltaY() !=0){
-				socket.emit('move', 15 * joystick.deltaX()/250, - joystick.deltaY()/250);				
+					socket.emit('move', 100 * joystick.deltaX()/250, - 100 * joystick.deltaY()/250);				
 				}
 				var outputEl	= document.getElementById('result');
 				outputEl.innerHTML	= '<b>Result:</b> '
-					+ ' dx:'+ 15 * joystick.deltaX()/250
-					+ ' dy:'+  - joystick.deltaY()/250
+					+ ' dx:'+ 100 * joystick.deltaX()/250
+					+ ' dy:'+  100* joystick.deltaY()/250
 					+ (joystick.right()	? ' right'	: '')
 					+ (joystick.up()	? ' up'		: '')
 					+ (joystick.left()	? ' left'	: '')
 					+ (joystick.down()	? ' down' 	: '')	
 			}, 1/30 * 1000);
 			
+	
+			function mouseDown() {
+				document.getElementById("container").style.color = "red";
+				
+			}
+		
+			function mouseUp() {
+			    document.getElementById("container").style.color = "black";
+			    socket.emit('move', 0, 0);			
+			}
+		
 		</script>
 	</body>
 </html>
