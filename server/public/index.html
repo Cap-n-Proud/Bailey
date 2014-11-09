@@ -358,6 +358,26 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 
 <div class="row">
   <div class="medium-4 columns">
+    <span class="labelSwitch">CPU %: </span>    
+    <span class="labelSwitch" id="CPU">CPU</span>
+  </div>
+  <div class="medium-2 columns">
+    <span>CPU temp: </span>    
+    <span class="labelSwitch" id="Temp">CPU temp</span>
+  </div>
+   <div class="medium-2 columns">
+    <span></span>    
+    <span class="labelSwitch" id="OPT"></span>
+  </div>
+  <div class="medium-4 columns">
+    <span class="labelSwitch" ></span>    
+    <span class="labelSwitch" id="OPT2"></span>
+  </div>
+
+</div>
+
+<div class="row">
+  <div class="medium-4 columns">
   <iframe id="videoFeed" src="http://192.168.1.145:9000/javascript_simple.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
   </div>
   <div class="medium-8 columns">
@@ -465,6 +485,15 @@ socket.on('status', function (y, p, r, b) {
     document.getElementById("Pitch").innerHTML = p; 
 }); 
    
+socket.on('temperatureUpdate', function (temp) {
+    document.getElementById("Temp").innerHTML = temp;
+    
+});
+
+socket.on('cpuUsageUpdate', function (CPU) {
+    document.getElementById("CPU").innerHTML = CPU; 
+});
+
  //socket.on('connected', function(V, ArduRead){
  //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
  //   //Set defalut values for the PID sliders

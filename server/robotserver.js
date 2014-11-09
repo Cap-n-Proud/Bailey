@@ -229,6 +229,32 @@ io.on('connection', function(socket){
 
   });  
  
+   // Measuring temperature
+  setInterval(function(){
+    child = exec("cat /sys/class/thermal/thermal_zone0/temp", function (error, stdout, stderr) {
+    if (error !== null) {
+      console.log('exec error: ' + error);
+    } else {
+      //Es necesario mandar el tiempo (eje X) y un valor de temperatura (eje Y).
+       var temp = parseFloat(stdout)/1000;
+       socket.emit('temperatureUpdate', temp); 
+    
+    }
+  });}, 5000);
+ 
+  // Measuring CPU
+   setInterval(function(){
+    child = exec("top -d 0.5 -b -n2 | grep 'Cpu(s)'|tail -n 1 | awk '{print $2 + $4}'", function (error, stdout, stderr) {
+    if (error !== null) {
+      console.log('exec error: ' + error);
+    } else {
+      //Es necesario mandar el tiempo (eje X) y un valor de temperatura (eje Y).
+      socket.emit('cpuUsageUpdate', parseFloat(stdout)); 
+	
+    }
+  });}, 10000);
+ 
+ 
 });
 io.on('disconnect', function () {
         console.log('A socket with sessionID ' + hs.sessionID 
