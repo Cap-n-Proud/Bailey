@@ -157,7 +157,12 @@ void setCommand()
 		configuration.motorLeftMinimumSpeed = atoi(value);
 		else if (String("motorRightMinimumSpeed").equals(arg))
 		configuration.motorRightMinimumSpeed = atoi(value);
-		
+
+		else if (String("torqueScale").equals(arg)){
+		//The idea here is to give one command to proportionally scale the minimum for both motors  
+                configuration.motorRightMinimumSpeed = atoi(value)*configuration.motorRightMinimumSpeed;
+		configuration.motorLeftMinimumSpeed = atoi(value)*configuration.motorLeftMinimumSpeed;
+		}
                 //EEPROM
                 else if (String("E_EEPROM").equals(arg)){
                     for (int i = 0; i < 512; i++)
@@ -181,7 +186,7 @@ void setCommand()
 		else if (String("SetsteerGain").equals(arg))
                 configuration.steerGain = atoi(value)/100;
 		else if (String("SetthrottelGain").equals(arg))
-                configuration.steerGain = atoi(value)/100;
+                  configuration.steerGain = atoi(value)/100;
 		else if (String("Steer").equals(arg))
 		{//sign * value
 		   UserControl[0] = (atof(value)/100) * configuration.Maxsteer;//((atof(value))/(atof(value))) * max(abs(atof(value)), configuration.Maxsteer);

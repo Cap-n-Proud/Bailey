@@ -3,7 +3,7 @@
 
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
-var fs = require('safefs');
+var fs = require('/usr/local/lib/node_modules/safefs');
 var PathTelFile="/home/pi/Documents/Sketches/Bailey/server/log/"
 
 var com = require("/usr/local/lib/node_modules/serialport");
@@ -13,17 +13,8 @@ var serverPort = 54321;
 
 //Not nice, implement asciimo: https://github.com/Marak/asciimo
 function greetings() {
-  console.log("__        __   _                            _              ");
-  console.log("\ \      / /__| | ___ ___  _ __ ___   ___  | |_ ___        ");
-  console.log("\ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \ | __/ _ \       ");
-  console.log("\ V  V /  __/ | (_| (_) | | | | | |  __/ | || (_) |      ");
-  console.log("\_/\_/ \___|_|\___\___/|_| |_| |_|\___|  \__\___/       ");
-  console.log("____        _ _                                         ");  
-  console.log("| __ )  __ _(_) | ___ _   _   ___  ___ _ ____   _____ _ __ ");
-  console.log(" |  _ \ / _` | | |/ _ \ | | | / __|/ _ \ '__\ \ / / _ \ '__|");
-  console.log("| |_) | (_| | | |  __/ |_| | \__ \  __/ |   \ V /  __/ | ");  
-  console.log(" |____/ \__,_|_|_|\___|\__, | |___/\___|_|    \_/ \___|_|");   
-  console.log("                      |___/                               ");
+
+ 
 }
 var LogR = 0;
 var TelemetryFN = "";
@@ -50,10 +41,10 @@ serialPort.on('open',function() {
 
 //--------------------------------------
 
-var express = require('express');
+var express = require('/usr/local/lib/node_modules/express');
 var app = express();
 var http = require('http').Server(app);
-var io = require('socket.io')(http);
+var io = require('/usr/local/lib/node_modules/socket.io')(http);
 
 var sys = require('sys');
 var exec = require('child_process').exec;

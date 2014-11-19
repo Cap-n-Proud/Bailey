@@ -121,7 +121,7 @@ void setConfiguration(boolean force) {
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
     configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
-    configuration.Maxthrottle = 5; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
     
     configuration.motorsON = 0;
     configuration.debug = 0;
