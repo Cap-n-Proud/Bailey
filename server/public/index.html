@@ -199,7 +199,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
   </div>
  <div class="medium-6 columns">
     <ul class="small-block-grid-9">
-      <li> <output id="APIDConKpVal"></output>&nbsp; <input type="range"
+      <li> <output class="PIDSliderLabel" id="APIDConKpVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="1500"
@@ -208,7 +208,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="APIDConKpVal.value=value"/>
         </li>
 
-      <li><output id="APIDConKiVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="APIDConKiVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="2000"
@@ -217,7 +217,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="APIDConKiVal.value=value"/>
         </li>
 
-      <li><output id="APIDConKdVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="APIDConKdVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="200"
@@ -226,7 +226,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="APIDConKdVal.value=value"/>
         </li>
 
-      <li><output id="APIDAggKpVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="APIDAggKpVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="5000"
@@ -236,7 +236,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
         </li>
 
 
-      <li><output id="APIDAggKiVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="APIDAggKiVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="5000"
@@ -245,7 +245,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="APIDAggKiVal.value=value"/>
         </li>
 
-      <li><output id="APIDAggKdVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="APIDAggKdVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="1500"
@@ -254,7 +254,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="APIDAggKdVal.value=value"/>
         </li>
 
-      <li><output id="SPIDKpVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="SPIDKpVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="3000"
              max="7000"
@@ -263,7 +263,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="SPIDKpVal.value=value"/>
         </li>
 
-      <li><output id="SPIDKiVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="SPIDKiVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="3000"
@@ -272,7 +272,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              oninput="SPIDKiVal.value=value"/>
         </li>
 
-      <li><output id="SPIDKdVal"></output>&nbsp; <input type="range"
+      <li><output class="PIDSliderLabel" id="SPIDKdVal"></output>&nbsp; <input type="range"
              class="PIDControlSlider"
              min="0"
              max="1500"
@@ -290,10 +290,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
              step="1"
              id="calibratedZeroAngle"
             orientation="horizontal"
-             oninput="calibratedZeroAngleVal.value=value"/>
-               
-   
-  <input type="text" id="right-label" style="width:150px;" placeholder="SCMD command">&nbsp;<a href="#" onclick="sendCMD()"class="button round tiny">SCMD</a> 
+             oninput="calibratedZeroAngleVal.value=value"/>&nbsp;<input type="text" id="right-label" style="width:150px;" placeholder="SCMD command">&nbsp;<a href="#" onclick="sendCMD()"class="button round tiny">SCMD</a> 
 
         
         
@@ -495,20 +492,19 @@ socket.on('cpuUsageUpdate', function (CPU) {
 });
 
  //socket.on('connected', function(V, ArduRead){
+ //   started=0;
  //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
  //   //Set defalut values for the PID sliders
  //   var PIDSlider = document.getElementsByClassName("PIDControlSlider");
  //   var arrayLength = SliderID.length;
- //   
+ //           
  //   for (var i = 0; i < arrayLength; i++) {
- //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]);
- //       document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
- //       document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider.id]);
- //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider.id]); 
+ //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(ArduRead[PIDSlider[i].id]);
  //   }
- //
- //  
- //   });
+ //     });
 
   socket.on('connected', function(V, ArduRead){
     started=0;

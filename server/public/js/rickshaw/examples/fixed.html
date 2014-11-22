@@ -1,13 +1,12 @@
-
 <!doctype>
 <head>
-	<link type="text/css" rel="stylesheet" href="/js/rickshaw/src/css/graph.css">
+	<link type="text/css" rel="stylesheet" href="../src/css/graph.css">
 	<link type="text/css" rel="stylesheet" href="../src/css/detail.css">
 	<link type="text/css" rel="stylesheet" href="../src/css/legend.css">
 	<link type="text/css" rel="stylesheet" href="css/extensions.css">
 
-	<script src="/js/d3.min.js"></script>
-	<script src="/js/rickshaw/rickshaw.min.js"></script>
+	<script src="../vendor/d3.v3.js"></script>
+	<script src="../rickshaw.js"></script>
 </head>
 <body>
 
@@ -18,8 +17,6 @@
 <script>
 
 var tv = 250;
-var valueB = 0;
-var valueP = 10;
 
 // instantiate our graph!
 var graph = new Rickshaw.Graph( {
@@ -37,11 +34,6 @@ var graph = new Rickshaw.Graph( {
 graph.render();
 
 // add some data every so often
-    socket.on('status', function (y, p, r, b) {
-	    //document.getElementById("minp").innerHTML = p;
-            valueP=p;
-	    valueB=b;
-  });
 
 var i = 0;
 var iv = setInterval( function() {
@@ -49,7 +41,7 @@ var iv = setInterval( function() {
 	var data = { one: Math.floor(Math.random() * 40) + 120 };
 
 	var randInt = Math.floor(Math.random()*100);
-	data.two = valueB;
+	data.two = (Math.sin(i++ / 40) + 4) * (randInt + 400);
 	data.three = randInt + 300;
 
 	graph.series.addData(data);

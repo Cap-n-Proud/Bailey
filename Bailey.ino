@@ -321,7 +321,7 @@ void updateIMUSensors() {
   angleT = pitch; 
   // move angle to around equilibrium
   angleKalmanFilter.correct(angleT);
-  anglePIDInput = angleKalmanFilter.getState() - configuration.calibratedZeroAngle + configuration.throttleGain*UserControl[1]; //Need to add the input throttle 
+  anglePIDInput = angleKalmanFilter.getState() - configuration.calibratedZeroAngle;// + configuration.throttleGain*UserControl[1]; //Need to add the input throttle 
 }
 
 
@@ -346,7 +346,7 @@ void loop() {
   
 
     // Speed pid,  input is wheel speed, output is angleSetpoint
-    speedPIDSetpoint = 0;
+    speedPIDSetpoint =  configuration.Maxthrottle*UserControl[1];
     speedPID.Compute();
     anglePIDSetpoint = - speedPIDOutput;
 
