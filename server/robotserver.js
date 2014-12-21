@@ -116,24 +116,24 @@ app.get('/REBOOT', function(req, res) {
 
 // Logging middleware
 
-
-var logF = function(data){  
- 
-     if (LogR == 1 && prevPitch != ArduRead['pitch'])
-     {
-      prevPitch = ArduRead['pitch']
-      LogRow = new Date().getTime() + SEPARATOR;
-      LogRow = LogRow + data;
-  fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
-		  if (err) {
-		  console.log('ERROR: ' + err);
-		  console.log(LogRow + '\n' )
-		  LogR=0;
-		  }
-		});
-  fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
-    }
-  };
+//
+//var logF = function(data){  
+// 
+//     if (LogR == 1 && prevPitch != ArduRead['pitch'])
+//     {
+//      prevPitch = ArduRead['pitch']
+//      LogRow = new Date().getTime() + SEPARATOR;
+//      LogRow = LogRow + data;
+//  fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
+//		  if (err) {
+//		  console.log('ERROR: ' + err);
+//		  console.log(LogRow + '\n' )
+//		  LogR=0;
+//		  }
+//		});
+//  fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
+//    }
+//  };
 
 //Triggered when new data cames from the serial port
 //eventEmitter.on('log', logF(data));
@@ -179,6 +179,7 @@ io.on('connection', function(socket){
 	  TelemetryFN = 'Telemetry_' + myDate.getFullYear() + myDate.getMonth() + myDate.getDate() +  myDate.getHours() +  myDate.getMinutes() + myDate.getSeconds()+ '.csv';
 	  
 	  fs.appendFile(PathTelFile+TelemetryFN, 'time' + ',');
+	  //write headers
 	  for(var prop in ArduRead) {
 	    if(ArduRead.hasOwnProperty(prop)){
 		//console.log(prop);
@@ -191,14 +192,14 @@ io.on('connection', function(socket){
 	  //fs.close(PathTelFile+TelemetryFN);
 	}
 	socket.emit('Info', PathTelFile+TelemetryFN)
-	console.log('Start logging to file ');
-	console.log(PathTelFile+TelemetryFN);
+	//console.log('Start logging to file ');
+	//console.log(PathTelFile+TelemetryFN);
 	
         LogR = 1;
       }
     else if ( CMD == "LOG_OFF" ){
-	console.log("Log Stopped");
-	socket.emit('Info', "stop");     
+	//console.log("Log Stopped");
+	socket.emit('Info', "logging stoped");     
 	LogR = 0;
     }
       });

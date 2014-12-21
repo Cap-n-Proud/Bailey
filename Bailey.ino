@@ -18,7 +18,7 @@
 #include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
 #include <L29x.h>
 
-
+#define SERIAL_BAUD 38400
 #define CONFIG_START 32
 #define SERIALCOMMAND_HARDWAREONLY
 #include <SerialCommand.h> //https://github.com/scogswell/ArduinoSerialCommand
@@ -107,12 +107,12 @@ void setConfiguration(boolean force) {
     configuration.anglePIDAggKp = 19.70;
     configuration.anglePIDAggKi = 0.1275;
     configuration.anglePIDAggKd = 5.51;
-    configuration.anglePIDConKp = 7.28;
-    configuration.anglePIDConKi = 2.60;
-    configuration.anglePIDConKd = 0.48;
-    configuration.speedPIDKp = 0.5540;
-    configuration.speedPIDKi = 0.133; //0.0051
-    configuration.speedPIDKd = 0.0023;
+    configuration.anglePIDConKp = 7.40;
+    configuration.anglePIDConKi = 2.97;
+    configuration.anglePIDConKd = 0.35;
+    configuration.speedPIDKp = 0.5007;
+    configuration.speedPIDKi = 0.1686; //0.0051
+    configuration.speedPIDKd = 0.00245;
     configuration.anglePIDOutputLowerLimit = -100;
     configuration.anglePIDOutputHigherLimit = 100;
     
@@ -201,10 +201,10 @@ TimedAction updateIMUSensorsTimedAction = TimedAction(20, updateIMUSensors);
 //TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
 
 //Reads serial for commands
-TimedAction RemoteReadTimedAction = TimedAction(50, RemoteRead);
+TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
 
 //Upload telemetry data
-TimedAction RemoteUploadTimedAction = TimedAction(150, RemoteUpload);
+TimedAction RemoteUploadTimedAction = TimedAction(250, RemoteUpload);
 
 //Swarn Particle Optimization
 TimedAction SwarnTimedAction = TimedAction(2000, SPO);
@@ -251,7 +251,7 @@ void setup() {
 
   //pinMode(configuration.speakerPin, OUTPUT);
 
-  Serial.begin(38400);
+  Serial.begin(SERIAL_BAUD);
   delay(50);
   //Serial.println("connection estabilished");
   if (LCD_Output)
