@@ -104,14 +104,14 @@ void setConfiguration(boolean force) {
     configuration.FirmwareVersion = "0.9";
     configuration.speedPIDOutputLowerLimit = -10.00; //Default was -5
     configuration.speedPIDOutputHigherLimit = 10.00;
-    configuration.anglePIDAggKp = 19.70;
-    configuration.anglePIDAggKi = 0.1275;
+    configuration.anglePIDAggKp = 10.70;
+    configuration.anglePIDAggKi = 2.5;
     configuration.anglePIDAggKd = 5.51;
-    configuration.anglePIDConKp = 7.40;
-    configuration.anglePIDConKi = 2.97;
-    configuration.anglePIDConKd = 0.35;
-    configuration.speedPIDKp = 0.5007;
-    configuration.speedPIDKi = 0.1686; //0.0051
+    configuration.anglePIDConKp = 4.80;
+    configuration.anglePIDConKi = 2.21;
+    configuration.anglePIDConKd = 4.75;
+    configuration.speedPIDKp = 0.3854;
+    configuration.speedPIDKi = 0.1374; //0.0051
     configuration.speedPIDKd = 0.00245;
     configuration.anglePIDOutputLowerLimit = -100;
     configuration.anglePIDOutputHigherLimit = 100;
@@ -126,7 +126,7 @@ void setConfiguration(boolean force) {
     configuration.motorsON = 0;
     configuration.debug = 0;
   
-    configuration.TriggerAngleAggressive = 7.50;
+    configuration.TriggerAngleAggressive = 3.50;
     configuration.calibratedZeroAngle = 1.8;
     
     configuration.anglePIDSampling = 10;
