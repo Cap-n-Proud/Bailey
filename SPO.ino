@@ -10,7 +10,6 @@ Need to add the measure using the Statistic library and check if stdev goes big
 As an alternative we can use the derivative ISTE2-ISTE1
 
 */  
-// CALL RemoteInit() at every interaction to sned new values to the Raspberry
 
 //Init code goes in the main body of the sketch
 const int numParticles = 30; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
@@ -19,12 +18,20 @@ int particleNumber = 0;
 double bestParticle = 0;
 double bestIteraction = 0;
 double SPOiteraction = 0;
-//int feedbackTime = 3000; //feedback time in milliseconds. Maybe we can kae it dynamic, first short time, after long time
+//int feedbackTime = 3000; //feedback time in milliseconds. Maybe we can make it dynamic, first short time, after long time
 double bestGlobalFitness = 9999;
 //double maxIncreaseRate = 1; //condition to stop the particle test in before the feedbackTime if the error rate increase out of control
-double minKp = 5, maxKp = 10, minKi = 0, maxKi = 5, minKd = 0.2, maxKd =0.5;
+//Define a percentage arounf the known stable values
+const int spread = 20;
+double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
+          maxKp =  configuration.anglePIDConKp * (1 + spread/100),
+          minKi =  configuration.anglePIDConKi * (1 - spread/100),
+          maxKi =  configuration.anglePIDConKi * (1 + spread/100),
+          minKd =  configuration.anglePIDConKd * (1 - spread/100), 
+          maxKd =  configuration.anglePIDConKd * (1 + spread/100);
 //double minKp = -20, maxKp = 20, minKi = -20, maxKi = 20, minKd = -50, maxKd =50;
-double maxVel = 10;//min(minKp, minKi)/10;
+//Need to be smarter. Define a function based on: a) domain, d/dt of ISTE 
+double maxVel = 2;//min(minKp, minKi)/10;
 //String LastEvent ="";
 boolean debugSPO = false;
 
@@ -84,9 +91,9 @@ domain[2].minR = minKd;
 domain[2].maxR = maxKd;
 
 
- bestGlobalPosition[0]= 9999;
- bestGlobalPosition[1]= 9999;
- bestGlobalPosition[2]= 9999;
+bestGlobalPosition[0]= 9999;
+bestGlobalPosition[1]= 9999;
+bestGlobalPosition[2]= 9999;
  
 
 for (int i = 0; i < numParticles; i++){
@@ -110,6 +117,7 @@ for (int i = 0; i < numParticles; i++){
 
 double ISTEF(double x, double y, double z)
 {
+  //x, y, z are for testing, when you us an analytical function instead of ISTE
   //z = x * exp( -(x^2 + y^2) ) The function has a known minimum value of z = -0.4288819 at x = -0.7071068 and y = 0.0.
   //return x * exp( -(x*x + y*y) ); 
    //return -1/(x*x+y*y+1);
@@ -189,8 +197,8 @@ double newVel, newPos, mv;
               LastEvent = LastEvent + ("***OOB MAX***"); 
           }
       
-      
-          if(debugSPO && particleNumber == -3){
+          //for debug we follow a particle
+          if(debugSPO == true && particleNumber == 3){
             Serial.print("dim ");Serial.println(j);
             Serial.print("r1 r2 ");Serial.print(r1);Serial.print(" ");Serial.println(r2);
             Serial.print("new vel ");Serial.println(swarn[particleNumber].vel[j]);
@@ -210,7 +218,7 @@ double newVel, newPos, mv;
     LastEvent = LastEvent + " maxVel " + (int)(maxVel*100);
     LastEvent = LastEvent + ("\n________________________"); 
     
-   if (particleNumber == -3){
+   if (debugSPO == true && particleNumber == 3){
     //Serial.print("Vel ");Serial.print(swarn[particleNumber].vel[0]);Serial.print(" ");Serial.print(swarn[particleNumber].vel[1]);Serial.print(" ");Serial.print(swarn[particleNumber].vel[2]);
     //Serial.print(" Pos ");Serial.print(swarn[particleNumber].pos[0]);Serial.print(" ");Serial.print(swarn[particleNumber].pos[1]);Serial.print(" ");Serial.println(swarn[particleNumber].pos[2]);
    
@@ -244,8 +252,9 @@ double newVel, newPos, mv;
         configuration.anglePIDConKp = bestGlobalPosition[0];
         configuration.anglePIDConKi = bestGlobalPosition[1];
         configuration.anglePIDConKd = bestGlobalPosition[2];
+        //Apply new vaues to PID
         controlConfig();
-        RemoteInit();
+        /*
         Serial.println("*********************RESULTS**********************");
         Serial.println("*********************RESULTS**********************");
         Serial.println("*********************RESULTS**********************");
@@ -256,7 +265,7 @@ double newVel, newPos, mv;
         Serial.println("*********************RESULTS**********************");
         Serial.println("*********************RESULTS**********************");
         Serial.println("*********************RESULTS**********************");
-        
+        */
     }    
      Serial.println(curVal);
      if (curVal > 30){
@@ -268,4 +277,5 @@ double newVel, newPos, mv;
       Serial.println("**********");
     } 
 }
+
 

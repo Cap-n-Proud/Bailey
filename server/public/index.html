@@ -213,7 +213,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 	</div> 
 	  <span class="labelSwitch" >Auto-tune</span>
 	 <div class="switch round medium">
-	  <input id="Autotune" type="checkbox">
+	  <input id="Autotune" onclick="AutoTune(this)" type="checkbox">
 	  <label for="Autotune"></label>
 	</div> 
 	<span class="labelSwitch">Video</span>
@@ -222,6 +222,7 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
 	 <label for="Video"></label>
 	</div>
          <a href="#" onclick="prntCfg()"class="button round tiny">config</a>
+          <a href="#" onclick="sdown()"class="button round tiny">shutdown</a>
   </div>
  <div class="medium-6 columns">
     <ul class="small-block-grid-9">
@@ -328,28 +329,6 @@ input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
      
   <div class="medium-4 columns" width="280" height="280">
      <iframe src="http://192.168.1.145:54321/vj" width="280" height="280" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>  
-  <!--
-         
-            <output id="ThrottleVal">aaa</output>&nbsp;<input type="range"
-            class="Throttle"
-            min="-100"
-             max="100"
-             step="1"
-             id="Throttle"
-            orientation="vertical"
-             oninput="ThrottleSet(Throttle.value)"
-             onmouseup="Throttle.value = 0; ThrottleVal.value = 0; ThrottleSet(Throttle.value)"/>
-            <br>
-       <output id="SteerVal">aaa</output>&nbsp;<input type="range"
-            class="AngleControlSlider"
-             min="-100"
-             max="100"
-             step="1"
-             id="Steer"
-            orientation="horizontal"
-             oninput="SteerSet(Steer.value)"
-             onmouseup="Steer.value = 0; SteerVal.value = 0; SteerSet(Steer.value)"/>
-            />-->
   </div>
 
 
@@ -461,6 +440,18 @@ function MotorF(element){
  }
  }
  
+function AutoTune(element){
+  
+  if (element.checked == true) {
+    socket.emit('SCMD', "AUTOTUNE 1");    
+  }
+    else
+    {
+    socket.emit('SCMD', "AUTOTUNE 0");
+ }
+ }
+ 
+ 
  function LogF(element){
   if (element.checked == true) {
     socket.emit('SerCMD', "LOG_ON");
@@ -483,11 +474,13 @@ function SteerSet(val){
     
 }
 
-
-
 function prntCfg(){
     socket.emit('SCMD', "printConfig");
     
+}
+ 
+function sdown(){
+    socket.emit('SHUTDOWN', "now"); 
 }
  
 function sendCMD() {
@@ -503,9 +496,10 @@ socket.on('CMD', function(CMD){
     document.getElementById("CMD").innerHTML = CMD;    
 });
 
-socket.on('status', function (y, p, r, b) {
+socket.on('status', function (y, p, r, b, info) {
     document.getElementById("BAL").innerHTML = b;
-    document.getElementById("Pitch").innerHTML = p; 
+    document.getElementById("Pitch").innerHTML = p;
+    document.getElementById("Info").innerHTML = info;
 }); 
    
 socket.on('temperatureUpdate', function (temp) {

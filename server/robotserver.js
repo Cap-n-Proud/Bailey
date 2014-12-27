@@ -145,7 +145,8 @@ io.on('connection', function(socket){
   
   //var LogRow;  
   setInterval(function(){
-   socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal']);
+   socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal'], ArduRead['Event']);
+  //console.log(ArduRead['yaw'] + ArduRead['Event']);
   }, 250);
  
   socket.on('Video', function(Video){
@@ -211,9 +212,9 @@ io.on('connection', function(socket){
   });
 
   socket.on('SHUTDOWN', function(){
+    socket.emit('Info', "Bailey going down for maintenance now");
     function puts(error, stdout, stderr) { sys.puts(stdout) }
-    exec('sudo shutdown');
-    sockets.emit('Info', "Bailey going down for maintenance now")
+    exec('sudo shutdown');    
   });
   
   socket.on('disconnect', function(){
@@ -288,6 +289,7 @@ serialPort.on('data', function(data, socket) {
 	  var arrayLength = ArduHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    ArduRead[ArduHeader[i]] = "N/A";
+	    //console.log(ArduHeader[i]);
 	  }
 	}
 	

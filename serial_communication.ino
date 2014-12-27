@@ -20,7 +20,7 @@ void RemoteUpload()
           char buffer[10];
            StartL2= millis();
             line = "T" + SEPARATOR
-	  +  dtostrf(yaw, 10, 3, buffer) + SEPARATOR
+	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
           + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
           + dtostrf(roll, 10, 3, buffer) + SEPARATOR
           + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
@@ -40,7 +40,8 @@ void RemoteUpload()
           + int(configuration.anglePIDAggKd * 100) + SEPARATOR
           + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
           + int(configuration.calibratedZeroAngle * 100) + SEPARATOR
-	  + configuration.FirmwareVersion;
+	  + LastEvent + SEPARATOR
+          + configuration.FirmwareVersion;
           Serial.println(line);
           //Serial.println(millis()-StartL2);
   }
@@ -70,22 +71,9 @@ void RemoteInit()
 		"anglePIDAggKd" + SEPARATOR +
 		"TriggerAngleAggressive" + SEPARATOR +
 		"calibratedZeroAngle"+ SEPARATOR +
-		"FirmwareVersion";
+		"Event"+ SEPARATOR + 
+                "FirmwareVersion";
 	    Serial.println(headers);
-/*            Serial.print("READ Read_SPIDKp ");Serial.println(configuration.speedPIDKp * 10000);
-            Serial.print("READ Read_SPIDKi ");Serial.println(configuration.speedPIDKi * 10000);
-            Serial.print("READ Read_SPIDKd ");Serial.println(configuration.speedPIDKd * 10000);
-            Serial.print("READ Read_APIDKp ");Serial.println(configuration.anglePIDConKp * 100);
-            Serial.print("READ Read_APIDKi ");Serial.println((float)configuration.anglePIDConKi * 100);
-            Serial.print("READ Read_APIDKd ");Serial.println(configuration.anglePIDConKd * 100);
-            Serial.print("READ Read_APIDAggKp ");Serial.println(configuration.anglePIDAggKp * 100);
-            Serial.print("READ Read_APIDAggKi ");Serial.println((float)configuration.anglePIDAggKi * 100);
-            Serial.print("READ Read_APIDAggKd ");Serial.println(configuration.anglePIDAggKd * 100);
-            Serial.print("READ Read_TriggerAngleAggressive ");Serial.println(configuration.TriggerAngleAggressive*100);
-            Serial.print("READ Read_calibratedZeroAngle ");Serial.println(configuration.calibratedZeroAngle*100);
-            Serial.print("READ FirmwareVersion ");Serial.println(configuration.FirmwareVersion);
-            LastEvent = "System ready";
-*/  
 }
 
 void setCommand() 
@@ -137,7 +125,13 @@ void setCommand()
                   }                  
                 else if (String("AUTOTUNE").equals(arg)){
                      AUTOTUNE = atof(value); 
-                     LastEvent = "Autotune ON";
+                  if (atoi(value)==0)
+                    {
+                     LastEvent = "Autotune OFF";
+                     }
+                  else
+                    LastEvent = "Autotune ON";
+                   
                   }
                 else if (String("anglePIDLowerLimit").equals(arg))
 		configuration.anglePIDOutputLowerLimit = atof(value);
@@ -167,7 +161,7 @@ void setCommand()
                 else if (String("E_EEPROM").equals(arg)){
                     for (int i = 0; i < 512; i++)
                       EEPROM.write(i, 255);
-                     LastEvent= "EEPROM Erased/n";
+                     LastEvent= "EEPROM Erased";
                      loadConfig();
                      RemoteInit();
                      
@@ -175,11 +169,11 @@ void setCommand()
                   }
                  else if (String("SaveCfg").equals(arg)){
                      saveConfig(); 
-                     LastEvent= "Config Saved to EEPROM/n";
+                     LastEvent= "Config Saved to EEPROM";
                   }
                  else if (String("Load_def").equals(arg)){
                      setConfiguration((boolean) int(value));
-                      LastEvent= "Default config loaded/n";
+                      LastEvent= "Default config loaded";
                   }
 				
 		// steering
@@ -297,6 +291,7 @@ controlConfig();
 
 
 }
+
 
 
 

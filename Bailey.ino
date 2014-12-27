@@ -340,7 +340,7 @@ void loop() {
   RemoteUploadTimedAction.check();
   
   if (AUTOTUNE==1) {
-   // SwarnTimedAction.check();    
+   SwarnTimedAction.check();    
   // remoteControlWatchdogTimedAction.check();
   }
   
