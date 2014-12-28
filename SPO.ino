@@ -12,14 +12,14 @@ For the moment just calculate ISTE, in future define some criteria to ensure the
  */
 
 
-boolean debugSPO = true;
+boolean debugSPO = false;
 String SPACER = " ";
 String Note = "";
 String LastEventSPO ="";
 char cbuffer[10];
 //Init code goes in the main body of the sketch
-const int numParticles = 30; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
-double maxInteractions = 100;
+const int numParticles = 15; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
+double maxInteractions = 20;
 double bestParticle = 0;
 double bestIteraction = 0;
 double SPOiteraction = 0;
@@ -28,14 +28,16 @@ double bestGlobalFitness = 9999;
 //double maxIncreaseRate = 1; //condition to stop the particle test in before the feedbackTime if the error rate increase out of control
 //Define a percentage arounf the known stable values
 const int spread = 20;
-/*double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
+double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
  maxKp =  configuration.anglePIDConKp * (1 + spread/100),
  minKi =  configuration.anglePIDConKi * (1 - spread/100),
  maxKi =  configuration.anglePIDConKi * (1 + spread/100),
  minKd =  configuration.anglePIDConKd * (1 - spread/100), 
- maxKd =  configuration.anglePIDConKd * (1 + spread/100);*/
+ maxKd =  configuration.anglePIDConKd * (1 + spread/100);
+
 //Serach space for test
-double minKp=-5, maxKp=5, minKi=-5, maxKi=5, minKd=-5, maxKd=5;
+//double minKp=-5, maxKp=5, minKi=-5, maxKi=5, minKd=-5, maxKd=5;
+
 //double minKp = -20, maxKp = 20, minKi = -20, maxKi = 20, minKd = -50, maxKd =50;
 //Need to be smarter. Define a function based on: a) domain, d/dt of ISTE 
 double maxVel = 5;//min(minKp, minKi)/10;
@@ -127,9 +129,9 @@ double ISTEF(double x, double y, double z)
 {
   //x, y, z are for testing, when you us an analytical function instead of ISTE
   //z = x * exp( -(x^2 + y^2) ) ;The function has a known minimum value of z = -0.4288819 at x = -0.7071068 and y = 0.0.
-  return  x * exp( -(x*x + y*y) ); 
+  //return  x * exp( -(x*x + y*y) ); 
   //return -1/(x*x+y*y+1);
-  //return ISTE;
+  return ISTE;
 }
 
 void SPO(){
@@ -192,11 +194,11 @@ void SPO(){
 
     //Check if position is allowed
     if (swarn[particleNumber].pos[j] < domain[j].minR){
-      swarn[particleNumber].pos[j] = domain[j].minR;//random(domain[j].minR,domain[j].maxR); //
+      swarn[particleNumber].pos[j] = random(domain[j].minR,domain[j].maxR); //
       Note = Note + ("***OOB LOWER*** ") + j; 
     }
     if (swarn[particleNumber].pos[j] > domain[j].maxR){
-      swarn[particleNumber].pos[j] = domain[j].maxR;//random(domain[j].minR,domain[j].maxR);  //domain[j].maxR;
+      swarn[particleNumber].pos[j] = random(domain[j].minR,domain[j].maxR);  //domain[j].maxR;
       Note = Note + ("***OOB MAX*** ") + j; 
     }
 
@@ -207,7 +209,7 @@ void SPO(){
               + (" ISTE: ") + dtostrf(curVal, 10, 5, cbuffer) 
               + "\nParticle best: " + SPACER + dtostrf(swarn[particleNumber].Bpos[0] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].Bpos[1] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].Bpos[2] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].PARbestFitness , 10, 3, cbuffer)
               +  "\nBest gFitness" + dtostrf(bestGlobalFitness, 10, 3, cbuffer) + SPACER + "gPos: " + dtostrf(bestGlobalPosition[0], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[1], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[2], 10, 3, cbuffer)
-              +  "\nBest particle: " + (int)bestParticle  + SPACER + "best iteraction: " + (int)bestIteraction
+              +  "\nBest iteraction: " + (int)bestIteraction + SPACER + "best particle: " + (int)bestParticle 
               + "\n" + Note +("\n__________________________________"); 
 
   if (debugSPO == true){
@@ -225,7 +227,7 @@ void SPO(){
 
 
   //Reset ISTE and update the other global varibles
-  //ISTE=0;
+  ISTE=0;
   Note = "";
   particleNumber = particleNumber + 1;
   //If I have looped thorugh all the particles, the cycle starts again in a subsequent interaction
@@ -236,11 +238,8 @@ void SPO(){
     particleNumber = 0;
   }
 
-  if (SPOiteraction == maxInteractions){
-    AUTOTUNE = 0;
-    SPOiteraction = 0;
-    particleNumber = 0;
-
+//Stop condittions: if I finish the number of cycles OR if the solution seems not to improve for some cycles
+  if (SPOiteraction == maxInteractions || (SPOiteraction - bestIteraction) > 5){
     configuration.anglePIDConKp = bestGlobalPosition[0];
     configuration.anglePIDConKi = bestGlobalPosition[1];
     configuration.anglePIDConKd = bestGlobalPosition[2];
@@ -258,20 +257,29 @@ void SPO(){
      Serial.println("*********************RESULTS**********************");
      Serial.println("*********************RESULTS**********************");
      */
-    LastEventSPO = +  ("\n*********************************__________________________________")+ SPACER + "\nInt: " + (int)bestIteraction + (" Particle: ") + (int)bestParticle + SPACER 
+    LastEventSPO = ("\n******************************************************************")+ SPACER + "\nInt: " + (int)bestIteraction + (" Particle: ") + (int)bestParticle + SPACER 
               +  "\nBest " + dtostrf(bestGlobalFitness, 10, 3, cbuffer) + SPACER + "Best Global: " + dtostrf(bestGlobalPosition[0], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[1], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[2], 10, 3, cbuffer)
-              + ("\n*********************************__________________________________"); 
-   Serial.println(LastEventSPO);
+              + ("\n******************************************************************"); 
+   
+   if ((SPOiteraction - bestIteraction) > 5)
+   {
+     LastEventSPO = "\nSoultion seems not to converge further... terminating" + LastEventSPO;
+   }
+   
+   if (debugSPO == true){Serial.println(LastEventSPO);}
+  
+   AUTOTUNE = 0;
+   SPOiteraction = 0;
+   particleNumber = 0;
   }    
+  
   //Serial.println(curVal);
-  /*if (curVal > 30){
+  if (curVal > 30){
    configuration.anglePIDConKp = bestGlobalPosition[0];
    configuration.anglePIDConKi = bestGlobalPosition[1];
    configuration.anglePIDConKd = bestGlobalPosition[2]; 
    controlConfig();
-   
-   Serial.println("**********");
-   } */
+    }
 }
 
 

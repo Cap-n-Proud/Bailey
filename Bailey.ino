@@ -72,6 +72,8 @@ struct Configuration {
   double throttleGain;
   double Maxsteer;
   double Maxthrottle;
+  int numParticles;
+  double maxInteractions;
   //int speakerPin;
   uint8_t debugLevel;
   uint8_t debugSampleRate;
@@ -136,7 +138,10 @@ void setConfiguration(boolean force) {
     configuration.angleSensorSampling = 5;
     configuration.motorSpeedSensorSampling = 5;
     configuration.speedKalmanFilterR = 20.00;
-      
+  
+    configuration.maxInteractions = 30;
+    configuration.numParticles = 20;
+    
     configuration.debugLevel = 0;
     configuration.debugSampleRate = 50;
     //  configuration.speedPIDSetpointDebug = 1;

@@ -19,6 +19,7 @@ void RemoteUpload()
           balanceKalmanFilter.correct(dISTE);
           char buffer[10];
            StartL2= millis();
+           if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
             line = "T" + SEPARATOR
 	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
           + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
