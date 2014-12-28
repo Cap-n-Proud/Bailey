@@ -39,7 +39,7 @@ String SEPARATOR = ","; //Used as separator for telemetry
 // Tell it where to store your config data in EEPROM
 boolean LCD_Output = false;
 int debug = 0;
-
+int particleNumber = 0;
 /* Configutation parameters */
 struct Configuration {
   String FirmwareVersion;
@@ -207,7 +207,7 @@ TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
 TimedAction RemoteUploadTimedAction = TimedAction(250, RemoteUpload);
 
 //Swarn Particle Optimization
-TimedAction SwarnTimedAction = TimedAction(2000, SPO);
+TimedAction SwarnTimedAction = TimedAction(300, SPO);
 
 SerialCommand SCmd;   // The SerialCommand object
 
@@ -245,6 +245,10 @@ FreeSixIMU sixDOF = FreeSixIMU();
 //int beats[] = { 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 4 };
 //int tempo = 300;
  TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
+
+
+
+
 
 void setup() { 
 
@@ -341,7 +345,6 @@ void loop() {
   
   if (AUTOTUNE==1) {
    SwarnTimedAction.check();    
-  // remoteControlWatchdogTimedAction.check();
   }
   
 
