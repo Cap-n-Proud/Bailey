@@ -179,11 +179,11 @@ void SPO(){
        //Check if vel is allowed
     if (swarn[particleNumber].vel[j] > maxVel){
       swarn[particleNumber].vel[j] = maxVel;
-      Note = Note + ("***Maxvel MAX***"); 
+      Note = Note + ("***Maxvel MAX*** ") + j; 
     }
     if (swarn[particleNumber].vel[j] < -maxVel){
       swarn[particleNumber].vel[j] = -maxVel;
-      Note = Note + ("***Maxvel LOWER***"); 
+      Note = Note + ("***Maxvel LOWER*** ") + j; 
     }
 
     //Now update the position
@@ -193,11 +193,11 @@ void SPO(){
     //Check if position is allowed
     if (swarn[particleNumber].pos[j] < domain[j].minR){
       swarn[particleNumber].pos[j] = domain[j].minR;//random(domain[j].minR,domain[j].maxR); //
-      Note = Note + ("***OOB LOWER***"); 
+      Note = Note + ("***OOB LOWER*** ") + j; 
     }
     if (swarn[particleNumber].pos[j] > domain[j].maxR){
       swarn[particleNumber].pos[j] = domain[j].maxR;//random(domain[j].minR,domain[j].maxR);  //domain[j].maxR;
-      Note = Note + ("***OOB MAX***"); 
+      Note = Note + ("***OOB MAX*** ") + j; 
     }
 
   }      
@@ -206,7 +206,8 @@ void SPO(){
               + "\nPosition: " + dtostrf(swarn[particleNumber].pos[0], 10, 3, cbuffer) + SPACER  +  dtostrf(swarn[particleNumber].pos[1], 10, 3, cbuffer) + SPACER  +  dtostrf(swarn[particleNumber].pos[2], 10, 3, cbuffer)
               + (" ISTE: ") + dtostrf(curVal, 10, 5, cbuffer) 
               + "\nParticle best: " + SPACER + dtostrf(swarn[particleNumber].Bpos[0] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].Bpos[1] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].Bpos[2] , 10, 3, cbuffer) + SPACER + dtostrf(swarn[particleNumber].PARbestFitness , 10, 3, cbuffer)
-              +  "\nBest Fitness" + dtostrf(bestGlobalFitness, 10, 3, cbuffer) + SPACER + "Best Global: " + dtostrf(bestGlobalPosition[0], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[1], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[2], 10, 3, cbuffer)
+              +  "\nBest gFitness" + dtostrf(bestGlobalFitness, 10, 3, cbuffer) + SPACER + "gPos: " + dtostrf(bestGlobalPosition[0], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[1], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[2], 10, 3, cbuffer)
+              +  "\nBest particle: " + (int)bestParticle  + SPACER + "best iteraction: " + (int)bestIteraction
               + "\n" + Note +("\n__________________________________"); 
 
   if (debugSPO == true){
