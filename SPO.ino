@@ -12,60 +12,7 @@ For the moment just calculate ISTE, in future define some criteria to ensure the
  */
 
 
-boolean debugSPO = false;
-String SPACER = " ";
-String Note = "";
-String LastEventSPO ="";
-char cbuffer[10];
-//Init code goes in the main body of the sketch
-const int numParticles = 15; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
-double maxInteractions = 20;
-double bestParticle = 0;
-double bestIteraction = 0;
-double SPOiteraction = 0;
-//int feedbackTime = 3000; //feedback time in milliseconds. Maybe we can make it dynamic, first short time, after long time
-double bestGlobalFitness = 9999;
-//double maxIncreaseRate = 1; //condition to stop the particle test in before the feedbackTime if the error rate increase out of control
-//Define a percentage arounf the known stable values
-const int spread = 20;
-double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
- maxKp =  configuration.anglePIDConKp * (1 + spread/100),
- minKi =  configuration.anglePIDConKi * (1 - spread/100),
- maxKi =  configuration.anglePIDConKi * (1 + spread/100),
- minKd =  configuration.anglePIDConKd * (1 - spread/100), 
- maxKd =  configuration.anglePIDConKd * (1 + spread/100);
 
-//Serach space for test
-//double minKp=-5, maxKp=5, minKi=-5, maxKi=5, minKd=-5, maxKd=5;
-
-//double minKp = -20, maxKp = 20, minKi = -20, maxKi = 20, minKd = -50, maxKd =50;
-//Need to be smarter. Define a function based on: a) domain, d/dt of ISTE 
-double maxVel = 5;//min(minKp, minKi)/10;
-
-
-typedef struct  // create a new user defined structure called particle
-{
-  double pos[2]; // Kp, Ki, Kd
-  double vel[2];
-  double fitness;
-  double Bpos[2];
-  double PARbestFitness; 
-} 
-particle;
-
-particle swarn[numParticles]; 
-
-typedef struct //Defines the space where the partilce can move
-{
-  double minR;
-  double maxR;        
-} 
-space;
-
-space domain[2];
-
-
-double bestGlobalPosition[3];
 
 //------------------------------------------
 //Call this in the setup
@@ -245,18 +192,7 @@ void SPO(){
     configuration.anglePIDConKd = bestGlobalPosition[2];
     //Apply new vaues to PID
     controlConfig();
-    /*
-        Serial.println("*********************RESULTS**********************");
-     Serial.println("*********************RESULTS**********************");
-     Serial.println("*********************RESULTS**********************");
-     for (int j = 0; j <3; j++)Serial.println(bestGlobalPosition[j]);
-     Serial.print("Fitness: ");Serial.println(bestGlobalFitness);
-     Serial.print("Particle: ");Serial.println(bestParticle);
-     Serial.print("Iteraction: ");Serial.println(bestIteraction);
-     Serial.println("*********************RESULTS**********************");
-     Serial.println("*********************RESULTS**********************");
-     Serial.println("*********************RESULTS**********************");
-     */
+
     LastEventSPO = ("\n******************************************************************")+ SPACER + "\nInt: " + (int)bestIteraction + (" Particle: ") + (int)bestParticle + SPACER 
               +  "\nBest " + dtostrf(bestGlobalFitness, 10, 3, cbuffer) + SPACER + "Best Global: " + dtostrf(bestGlobalPosition[0], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[1], 10, 3, cbuffer) + SPACER + dtostrf(bestGlobalPosition[2], 10, 3, cbuffer)
               + ("\n******************************************************************"); 

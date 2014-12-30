@@ -111,7 +111,7 @@ void setConfiguration(boolean force) {
     configuration.anglePIDAggKd = 5.51;
     configuration.anglePIDConKp = 4.80;
     configuration.anglePIDConKi = 2.21;
-    configuration.anglePIDConKd = 4.75;
+    configuration.anglePIDConKd = 0.475;
     configuration.speedPIDKp = 0.3854;
     configuration.speedPIDKi = 0.1374; //0.0051
     configuration.speedPIDKd = 0.00245;
@@ -212,7 +212,7 @@ TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
 TimedAction RemoteUploadTimedAction = TimedAction(250, RemoteUpload);
 
 //Swarn Particle Optimization
-TimedAction SwarnTimedAction = TimedAction(300, SPO);
+TimedAction SwarnTimedAction = TimedAction(2000, SPO);
 
 SerialCommand SCmd;   // The SerialCommand object
 
@@ -252,6 +252,60 @@ FreeSixIMU sixDOF = FreeSixIMU();
  TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
 
 
+boolean debugSPO = false;
+String SPACER = " ";
+String Note = "";
+String LastEventSPO ="";
+char cbuffer[10];
+//Init code goes in the main body of the sketch
+const int numParticles = 15; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
+double maxInteractions = 20;
+double bestParticle = 0;
+double bestIteraction = 0;
+double SPOiteraction = 0;
+//int feedbackTime = 3000; //feedback time in milliseconds. Maybe we can make it dynamic, first short time, after long time
+double bestGlobalFitness = 9999;
+//double maxIncreaseRate = 1; //condition to stop the particle test in before the feedbackTime if the error rate increase out of control
+//Define a percentage arounf the known stable values
+const int spread = 10;
+double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
+ maxKp =  configuration.anglePIDConKp * (1 + spread/100),
+ minKi =  configuration.anglePIDConKi * (1 - spread/100),
+ maxKi =  configuration.anglePIDConKi * (1 + spread/100),
+ minKd =  configuration.anglePIDConKd * (1 - spread/100), 
+ maxKd =  configuration.anglePIDConKd * (1 + spread/100);
+
+//Serach space for test
+//double minKp=-5, maxKp=5, minKi=-5, maxKi=5, minKd=-5, maxKd=5;
+
+//double minKp = -20, maxKp = 20, minKi = -20, maxKi = 20, minKd = -50, maxKd =50;
+//Need to be smarter. Define a function based on: a) domain, d/dt of ISTE 
+double maxVel = 5;//min(minKp, minKi)/10;
+
+
+typedef struct  // create a new user defined structure called particle
+{
+  double pos[2]; // Kp, Ki, Kd
+  double vel[2];
+  double fitness;
+  double Bpos[2];
+  double PARbestFitness; 
+} 
+particle;
+
+particle swarn[numParticles]; 
+
+typedef struct //Defines the space where the partilce can move
+{
+  double minR;
+  double maxR;        
+} 
+space;
+
+space domain[2];
+
+
+double bestGlobalPosition[3];
 
 
 
