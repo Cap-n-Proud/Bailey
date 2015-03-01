@@ -8,7 +8,7 @@
 <script>
 var ArduRead = {}
 var ArduHeader;
-var data = "Saab,Volvo,BMW";
+var data = "Test,Saab,Volvo,BMW";
 
   ArduHeader = data.split(",");
 	  var arrayLength = ArduHeader.length;
