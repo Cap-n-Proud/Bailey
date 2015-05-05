@@ -1,12 +1,12 @@
- <!DOCTYPE html>
-<html class="js flexbox flexboxlegacy canvas canvastext webgl no-touch geolocation postmessage websqldatabase indexeddb hashchange history draganddrop websockets rgba hsla multiplebgs backgroundsize borderimage borderradius boxshadow textshadow opacity cssanimations csscolumns cssgradients cssreflections csstransforms csstransforms3d csstransitions fontface generatedcontent video audio localstorage sessionstorage webworkers applicationcache svg inlinesvg smil svgclippaths"
-lang="en">
+<!DOCTYPE html>
+<html>
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bailey | Welcome</title>
     <link rel="stylesheet" href="foundation/css/foundation.css">
+    
     <script src="foundation/js/vendor/modernizr.js"></script>
     
   <script src="js/foundation/foundation.js"></script>
@@ -18,16 +18,573 @@ lang="en">
 <link rel="stylesheet" type="text/css" href="css/RangeInputskin1.css"/>
 </head>
 
-  <input type="text" id="right-label" style="width:150px;" placeholder="SCMD command">&nbsp;<a href="#" onclick="sendCMD()"class="button round tiny">SCMD</a> 
+<style>
 
+body {
+    
+    background: #282828; !important;
+     
+}
+.labelSwitch {
+    color: white;
+}
+
+span,
+output
+{
+    color: white;
+    text-align: left;
+}
+
+
+
+
+
+div.switch label {
+  display: block;
+  margin-bottom: 1rem;
+  position: relative;
+  color: white;
+  background: #dddddd;
+  text-indent: 100%;
+  width: 4rem;
+  height: 2rem;
+  cursor: pointer;
+  transition: left 0.15s ease-out; }
+div.switch input {
+  display: none; }
+  div.switch input + label {
+    margin-left: 0;
+    margin-right: 0; }
+div.switch label:after {
+  content: "";
+  display: block;
+  background: white;
+  position: absolute;
+  top: .25rem;
+  left: .25rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  -webkit-transition: left 0.15s ease-out;
+  -moz-transition: left 0.15s ease-out;
+  transition: left 0.15s ease-out;
+  -webkit-transform: translate3d(0, 0, 0);
+  -moz-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0); }
+div.switch input:checked + label {
+  background: #008cba; }
+div.switch input:checked + label:after {
+  left: 2.25rem; }
+div.switch label {
+  width: 4rem;
+  height: 2rem; }
+div.switch label:after {
+  width: 1.5rem;
+  height: 1.5rem; }
+div.switch input:checked + label:after {
+  left: 2.25rem; }
+div.switch label {
+  color: transparent;
+  background: #dddddd; }
+div.switch label:after {
+  background: white; }
+div.switch input:checked + label {
+  background: #008cba; }
+div.switch.large label {
+  width: 5rem;
+  height: 2.5rem; }
+div.switch.large label:after {
+  width: 2rem;
+  height: 2rem; }
+div.switch.large input:checked + label:after {
+  left: 2.75rem; }
+div.switch.small label {
+  width: 3.5rem;
+  height: 1.75rem; }
+div.switch.small label:after {
+  width: 1.25rem;
+  height: 1.25rem; }
+div.switch.small input:checked + label:after {
+  left: 2rem; }
+div.switch.tiny label {
+  width: 3rem;
+  height: 1.5rem; }
+div.switch.tiny label:after {
+  width: 1rem;
+  height: 1rem; }
+div.switch.tiny input:checked + label:after {
+  left: 1.75rem; }
+div.switch.radius label {
+  border-radius: 4px; }
+div.switch.radius label:after {
+  border-radius: 3px; }
+div.switch.round {
+  border-radius: 1000px; }
+  div.switch.round label {
+    border-radius: 2rem; }
+  div.switch.round label:after {
+    border-radius: 2rem; }
+
+input[class=PIDControlSlider] {
+    -webkit-appearance: slider-vertical;
+    width: 20px;
+    height: 250px;}
+    
+input[class=Throttle] {
+    -webkit-appearance: slider-vertical;
+    width: 20px;
+    height: 250px;}
+
+input[class=PIDControlSlider]::-webkit-slider-runnable-track {
+    width: 20px;
+    height: 250px;
+    background: #ddd;
+    border: none;
+    border-radius: 3px;
+}
+
+input[class=PIDControlSlider]::-webkit-slider-thumb {
+    -webkit-appearance: slider-vertical;
+    border: none;
+    height: 30px;
+    width: 30px;
+    border-radius: 50%;
+    background: goldenrod;
+    margin-top: -4px;
+}
+
+input[class=PIDControlSlider]:focus {
+    outline: none;
+}
+
+input[class=PIDControlSlider]:focus::-webkit-slider-runnable-track {
+    background: #ccc;
+}
+
+   
+		#info {
+			position	: absolute;
+			top		: 0px;
+			width		: 100%;
+			padding		: 5px;
+			text-align	: center;
+		}
+		#info a {
+			color		: #66F;
+			text-decoration	: none;
+		}
+		#info a:hover {
+			text-decoration	: underline;
+		}
+		#container {
+			width		: 250px;
+			height		: 250px;
+			overflow	: hidden;
+			padding		: 5px;
+			margin		: 5px;
+			border-width: 2px;
+			border-style: dashed; 
+			-webkit-user-select	: none;
+			-moz-user-select	: none;
+		}
+                
+</style>
+
+<body>
+
+
+<div class="row">
+  <div class="medium-2 columns">
+	<span class="labelSwitch" >Motors</span>
+	<div class="switch round medium">
+	    <input  id="Motors" type="checkbox" onchange="MotorF(this)">
+	    <label for="Motors"></label>
+	      
+	</div>
+	 <span class="labelSwitch" >Auto mode</span>
+	 <div class="switch round medium">
+	  <input id="Auto" type="checkbox">
+	 <label for="Auto"></label>
+	</div> 
+	  <span class="labelSwitch" >Log</span>
+	 <div class="switch round medium">
+	  <input id="Log" type="checkbox" onchange="LogF(this)">
+	  <label for="Log"></label>
+	</div> 
+	  <span class="labelSwitch" >Auto-tune</span>
+	 <div class="switch round medium">
+	  <input id="Autotune" onclick="AutoTune(this)" type="checkbox">
+	  <label for="Autotune"></label>
+	</div> 
+	<span class="labelSwitch">Video</span>
+	 <div class="switch round medium">
+	 <input id="Video" type="checkbox" onclick="VideoF(this)">
+	 <label for="Video"></label>
+	</div>
+         <a href="#" onclick="prntCfg()"class="button round tiny">config</a>
+          <a href="#" onclick="sdown()"class="button round tiny">shutdown</a>
+  </div>
+ <div class="medium-6 columns">
+    <ul class="small-block-grid-9">
+      <li> <output class="PIDSliderLabel" id="APIDConKpVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="1500"
+             step="1"
+             id="APIDConKp"
+             oninput="APIDConKpVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="APIDConKiVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="2000"
+             step="1"
+             id="APIDConKi"
+             oninput="APIDConKiVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="APIDConKdVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="200"
+             step="1"
+             id="APIDConKd"
+             oninput="APIDConKdVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="APIDAggKpVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="5000"
+             step="1"
+             id="APIDAggKp"
+             oninput="APIDAggKpVal.value=value"/>
+        </li>
+
+
+      <li><output class="PIDSliderLabel" id="APIDAggKiVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="5000"
+             step="1"
+             id="APIDAggKi"
+             oninput="APIDAggKiVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="APIDAggKdVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="1500"
+             step="1"
+             id="APIDAggKd"
+             oninput="APIDAggKdVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="SPIDKpVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="3000"
+             max="7000"
+             step="1"
+             id="SPIDKp"
+             oninput="SPIDKpVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="SPIDKiVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="3000"
+             step="1"
+             id="SPIDKi"
+             oninput="SPIDKiVal.value=value"/>
+        </li>
+
+      <li><output class="PIDSliderLabel" id="SPIDKdVal"></output>&nbsp; <input type="range"
+             class="PIDControlSlider"
+             min="0"
+             max="1500"
+             step="1"
+             value="80"
+             id="SPIDKd"      
+             oninput="SPIDKdVal.value=value"/>
+        </li>
+      <li>
+    <output id="calibratedZeroAngleVal"></output>&nbsp;
+        <input type="range"
+             class="AngleControlSlider"
+             min="-400"
+             max="400"
+             step="1"
+             id="calibratedZeroAngle"
+            orientation="horizontal"
+             oninput="calibratedZeroAngleVal.value=value"/>&nbsp;<input type="text" id="right-label" style="width:150px;" placeholder="SCMD command">&nbsp;<a href="#" onclick="sendCMD()"class="button round tiny">SCMD</a> 
+
+        
+        
+      </li>
+        
+    </ul>
+    
+ </div>
+     
+  <div class="medium-4 columns" width="280" height="280">
+     <iframe src="http://192.168.1.145:54321/vj" width="280" height="280" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>  
+  </div>
+
+
+<!--Closes the row-->
+</div>
+
+  <div class="medium-5 columns">
+    </div>
+
+<div class="row">
+  <div class="medium-4 columns">
+    <span class="labelSwitch">Command: </span>    
+    <span class="labelSwitch" id="CMD">last command</span>
+  </div>
+  <div class="medium-2 columns">
+    <span>B: </span>    
+    <span class="labelSwitch" id="BAL">Balance Index</span>
+  </div>
+   <div class="medium-2 columns">
+    <span>P: </span>    
+    <span class="labelSwitch" id="Pitch">Pitch</span>
+  </div>
+  <div class="medium-4 columns">
+    <span class="labelSwitch" >Info: </span>    
+    <span class="labelSwitch" id="Info">Info</span>
+    <!--<textarea class="labelSwitch" id="Info" cols="50" rows="5">-->
+  </div>
+
+</div>
+
+<div class="row">
+  <div class="medium-4 columns">
+    <span class="labelSwitch">CPU %: </span>    
+    <span class="labelSwitch" id="CPU">CPU</span>
+  </div>
+  <div class="medium-2 columns">
+    <span>CPU temp: </span>    
+    <span class="labelSwitch" id="Temp">CPU temp</span>
+  </div>
+   <div class="medium-2 columns">
+    <span></span>    
+    <span class="labelSwitch" id="OPT"></span>
+  </div>
+  <div class="medium-4 columns">
+    <span class="labelSwitch" ></span>    
+    <span class="labelSwitch" id="OPT2"></span>
+  </div>
+
+</div>
+
+<div class="row">
+  <div class="medium-4 columns">
+  <iframe id="videoFeed" src="http://192.168.1.145:9000/javascript_simple.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
+  </div>
+  <div class="medium-8 columns">
+    <!--<iframe src="http://192.168.1.145:54321/ypr" width="250" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>-->
+     <iframe src="http://192.168.1.145:54321/livedata" width="550" height="380" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+
+  </div>
+
+</div>
+
+<script src="foundation/js/vendor/jquery.js"></script>
+<script src="foundation/js/foundation.min.js"></script>
+<script>
+    $(document).foundation();
+</script>
+
+<script>
+ var socket = io();
+ //Slide ranges are automatically calculated as percentage of the default config from Arduino
+ var PID_SLIDE_RANGE = 0.50; 
+ 
+window.onload=function()
+{
+ var classname = document.getElementsByClassName("PIDControlSlider");
+
+    var myFunction = function() {
+        var attribute = this.getAttribute("id");
+        socket.emit('SCMD', this.getAttribute("id")+' '+ this.value);
+        //alert(this.getAttribute("id")+' '+ this.value);
+    };
+
+    for(var i=0;i<classname.length;i++){
+        classname[i].addEventListener('change', myFunction, false);
+    }
+}
+
+ function VideoF(element){
+ 
+  if (element.checked == true) {
+    socket.emit('Video', "cameraON.sh");
+    document.getElementById('videoFeed').src = document.getElementById('videoFeed').src
+        
+  }
+    else
+    {
+    socket.emit('Video', "cameraOFF.sh");   
+  }
+ }
+
+function MotorF(element){
   
-   <script type="text/javascript" src="/js/socket.io.js"></script>
-    <script lang="javascript" type="text/javascript">
-    var socket = io();
-	
-	function sendCMD() {
+  if (element.checked == true) {
+    socket.emit('SCMD', "Motors 1");    
+  }
+    else
+    {
+    socket.emit('SCMD', "Motors 0");
+ }
+ }
+ 
+function AutoTune(element){
+  
+  if (element.checked == true) {
+    socket.emit('SCMD', "AUTOTUNE 1");    
+  }
+    else
+    {
+    socket.emit('SCMD', "AUTOTUNE 0");
+ }
+ }
+ 
+ 
+ function LogF(element){
+  if (element.checked == true) {
+    socket.emit('SerCMD', "LOG_ON");
+  }
+    else
+    {
+    socket.emit('SerCMD', "LOG_OFF");   
+  }
+ }
+ 
+function ThrottleSet(val){
+    socket.emit('SCMD', 'Throttle ' + val);
+    document.getElementById("ThrottleVal").value = val;
+    
+}
+
+function SteerSet(val){
+    socket.emit('SCMD', 'Steer ' + val);
+    document.getElementById("SteerVal").value = val;
+    
+}
+
+function prntCfg(){
+    socket.emit('SCMD', "printConfig");
+    
+}
+ 
+function sdown(){
+    socket.emit('SHUTDOWN', "now"); 
+}
+ 
+function sendCMD() {
      //document.getElementById("CMD").innerHTML = document.getElementById("right-label").value;
       socket.emit('SCMD', document.getElementById("right-label").value);    
 }
-	
-    </script>
+
+socket.on('Info', function(CMD){
+    document.getElementById("Info").innerHTML = CMD.replace("\n", "<br />");    
+});
+
+socket.on('CMD', function(CMD){
+    document.getElementById("CMD").innerHTML = CMD;    
+});
+
+socket.on('status', function (y, p, r, b, info) {
+    document.getElementById("BAL").innerHTML = b;
+    document.getElementById("Pitch").innerHTML = p;
+    document.getElementById("Info").innerHTML = info;
+}); 
+   
+socket.on('temperatureUpdate', function (temp) {
+    document.getElementById("Temp").innerHTML = temp;
+    
+});
+
+socket.on('cpuUsageUpdate', function (CPU) {
+    document.getElementById("CPU").innerHTML = CPU; 
+});
+
+ //socket.on('connected', function(V, ArduRead){
+ //   started=0;
+ //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
+ //   //Set defalut values for the PID sliders
+ //   var PIDSlider = document.getElementsByClassName("PIDControlSlider");
+ //   var arrayLength = SliderID.length;
+ //           
+ //   for (var i = 0; i < arrayLength; i++) {
+ //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+ //       document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(ArduRead[PIDSlider[i].id]);
+ //   }
+ //     });
+
+  socket.on('connected', function(V, ArduRead){
+    started=0;
+    //console.log(ArduRead['anglePIDConKp']);
+    document.getElementById("Info").innerHTML = V + ' F: ' + ArduRead['READ FirmwareVersion'];
+    //Bulky, try to go with get elemnts by class and for...
+    document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
+    document.getElementById('APIDConKpVal').value = parseInt(ArduRead['anglePIDConKp']);
+   
+    document.getElementById('APIDConKi').value = parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
+    document.getElementById('APIDConKiVal').value = parseInt(ArduRead['anglePIDConKi']);
+   
+    document.getElementById('APIDConKd').value = parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
+    document.getElementById('APIDConKdVal').value = parseInt(ArduRead['anglePIDConKd']);
+    
+    document.getElementById('APIDAggKp').value = parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
+    document.getElementById('APIDAggKpVal').value = parseInt(ArduRead['anglePIDAggKp']);    
+   
+    document.getElementById('APIDAggKi').value = parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
+    document.getElementById('APIDAggKiVal').value = parseInt(ArduRead['anglePIDAggKi']);
+   
+    document.getElementById('APIDAggKd').value = parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
+    document.getElementById('APIDAggKdVal').value = parseInt(ArduRead['anglePIDAggKd']);
+   
+    document.getElementById('SPIDKp').value = parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
+    document.getElementById('SPIDKpVal').value = parseInt(ArduRead['speedPIDKp']);    
+   
+    document.getElementById('SPIDKi').value = parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
+    document.getElementById('SPIDKiVal').value = parseInt(ArduRead['speedPIDKi']);
+   
+   //Check how it get multplied in Arduino, does not increment enought
+    document.getElementById('SPIDKd').value = parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
+    document.getElementById('SPIDKdVal').value = parseInt(ArduRead['speedPIDKd']);
+   
+    document.getElementById('calibratedZeroAngle').value = parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); 
+    });
+
+</script>
+
+</body>
+</html>
