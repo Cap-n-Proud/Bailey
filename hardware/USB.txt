@@ -1,0 +1,12 @@
+Raspberry
+RED	=>	VCC
+ORANGE	=>	D-
+WHITE	=>	D+
+BLACK	=>	GND
+
+Arduino
+BLACK	=>	VCC
+WHITE	=>	D-
+ORANGE	=>	D+
+RED	=>	GND
+
