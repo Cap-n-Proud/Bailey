@@ -66,7 +66,7 @@
        <div class="row">
                     <div class="small-6 columns">
                       <i class="fa fa-bolt  fa-2x"></i>
-                      <div class="switch round small right"><input id="Motors" type="checkbox" onchange="MotorF(this)"><label for="Video"></label></div>
+                      <div class="switch round small right"><input id="Motors" type="checkbox" onclick="MotorF(this)"><label for="Motors"></label></div>
                     </div>
                     
                     <div class="small-3 columns">
@@ -83,7 +83,7 @@
        <div class="row">
                     <div class="small-6 columns">
                       <i class="fa fa-arrows fa-2x"></i>
-                      <div class="switch round small right"><input id="Auto" type="checkbox" onclick="VideoF(this)"><label for="Video"></label></div>
+                      <div class="switch round small right"><input id="Auto" type="checkbox" onclick="Auto(this)"><label for="Auto"></label></div>
                     </div>
                     
                     <div class="small-3 columns">
@@ -117,7 +117,7 @@
        <div class="row">
                     <div class="small-6 columns">
                       <i class="fa fa-database fa-2x"></i>
-                      <div class="switch round small right"><input id="Log" type="checkbox" onclick="VideoF(this)"><label for="Video"></label></div>
+                      <div class="switch round small right"><input id="Log" type="checkbox" onclick="LogF(this)"><label for="Log"></label></div>
                     </div>
                     
                     <div class="small-3 columns">
@@ -135,7 +135,7 @@
        <div class="row">
                     <div class="small-6 columns">
                      <i class="fa fa-magic  fa-2x"></i>
-                      <div class="switch round small right"><input id="Autotune" type="checkbox" onclick="AutoTune(this)"><label for="Video"></label></div>
+                      <div class="switch round small right"><input id="Autotune" type="checkbox" onclick="AutoTune(this)"><label for="Autotune"></label></div>
                     </div>
                     
                     <div class="small-3 columns">
@@ -243,9 +243,7 @@
 
 <div class="tabs-content">
   <section role="tabpanel" aria-hidden="false" class="content active" id="panel2-1">
-  <iframe frameborder="0" height="250" id="videoFeed" name=
-            "videoFeed" src="http://192.168.1.145:9000/javascript_simple.html"
-            width="330"></iframe>      
+ <iframe id="videoFeed" src="default.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
   </section>
   <section role="tabpanel" aria-hidden="true" class="content" id="panel2-2">
     <ul class="small-block-grid-9">
@@ -328,9 +326,8 @@
 
 
         <div class="medium-4 columns">
-            <iframe frameborder="0" height="280" src=
-            "http://192.168.1.145:54321/vj" width="280"></iframe>
-        </div>
+            <iframe id="botControl" src="default.html" width="280" height="280" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
+            </div>
             <ul class="tabs" data-tab role="tablist">
   <li class="tab-title active" role="presentational" ><a href="#panel2-1" role="tab" tabindex="0" aria-selected="true" controls="panel2-1"><div class="tabItem">CAM</div></a></li>
   <li class="tab-title" role="presentational" ><a href="#panel2-2" role="tab" tabindex="0"aria-selected="false" controls="panel2-2">PID</a></li>
@@ -430,6 +427,10 @@ $(document).foundation();
        
        
     <script>
+    var serverAddr = "N/A";
+    var serverPort = "N/A";
+    var videoFeedPort = "N/A";
+    
 var socket = io();
     //Slide ranges are automatically calculated as percentage of the default config from Arduino
     var PID_SLIDE_RANGE = 0.50; 
@@ -449,19 +450,45 @@ var socket = io();
     }
     }
 
-    function VideoF(element){
-
-    if (element.checked == true) {
-    socket.emit('Video', "cameraON.sh");
-    document.getElementById('videoFeed').src = document.getElementById('videoFeed').src
-        
+    function VideoF(element) {
+	var status = 0;
+      if (element.checked == true) {
+	    socket.emit('Video', "cameraON.sh");
+	    status = 1;
+	    
+	 
+	    
+      } else {
+	    socket.emit('Video', "cameraOFF.sh");
+	    status = 0;
+	    }
+	
+	if (status == 1){
+	  setTimeout(camFeedRefresh, 1000);
+	  }
+	  else
+	  {
+	  setTimeout(camOFF, 1000);
+    
+	  }
     }
-    else
-    {
-    socket.emit('Video', "cameraOFF.sh");   
-    }
-    }
-
+	
+	function camFeedRefresh(){
+	     document.getElementById('videoFeed').src = document.getElementById("videoFeed").src = "http://192.168.1.145:9000/javascript_simple.html"
+	     //'http://' + serverADDR + ':' + videoFeedPort + '/javascript_simple.html';
+		
+	}
+	
+	function camOFF(){
+	   document.getElementById('videoFeed').src = "default.html";
+	 
+	}
+	
+	function takeSnapshot(element) {
+	  socket.emit('takeSnapShot');	
+	}
+	
+	
     function MotorF(element){
 
     if (element.checked == true) {
@@ -484,6 +511,8 @@ var socket = io();
     }
     }
 
+
+		
 
     function LogF(element){
     if (element.checked == true) {
@@ -559,10 +588,23 @@ var socket = io();
     //   }
     //     });
 
-    socket.on('connected', function(V, ArduRead){
+   
+    
+    
+    socket.on('connected', function(info, serverADDR, serverPort, videoFeedPort, ArduRead){
     started=0;
-    //console.log(ArduRead['anglePIDConKp']);
-    document.getElementById("Info").innerHTML = V + ' F: ' + ArduRead['READ FirmwareVersion'];
+   
+   serverADDR = serverADDR.toString();
+    serverPort = serverPort.toString(); 
+    videoFeedPort = videoFeedPort.toString();
+    document.getElementById("botControl").src = 'http://' + serverADDR + ':' + serverPort + '/vj';
+   document.getElementById("Info").innerHTML = info;
+   document.getElementById("CMD").innerHTML = 'http://' + serverADDR + ':' + serverPort + '/vj';
+   
+    
+   // document.getElementById("Info").innerHTML = server;
+   
+	
     //Bulky, try to go with get elemnts by class and for...
     document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
     document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
@@ -616,6 +658,14 @@ var socket = io();
     document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); 
     });
 
+     socket.on('serverADDR6', function(serverADDR) {
+	    serverADDR = serverADDR.toString();
+	    document.getElementById("videoFeed").src = 'http://' + serverADDR + ':' + videoFeedPort + '/javascript_simple.html';
+	 document.getElementById("botControl").src = 'http://' + serverADDR + ':' + serverPort + '/vj';
+       
+    }); 
+    
+    
     </script> 
 
       <script src="js/foundation/js/vendor/jquery.js"></script>

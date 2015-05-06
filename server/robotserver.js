@@ -1,28 +1,47 @@
 // sudo udevadm control --reload-rules
 // to refresh the port allocation
 
+var nconf = require('/usr/local/lib/node_modules/nconf');
+nconf.argv()
+       .env()
+       .file({ file: '/home/pi/Bailey/server/config.json' });
+
+       
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
-var fs = require('/usr/local/lib/node_modules/safefs');
-var PathTelFile="/home/pi/Documents/Sketches/Bailey/server/log/"
+var nodeLib = nconf.get('server:nodeLib');
 
-var com = require("/usr/local/lib/node_modules/serialport");
-var serPort = "/dev/ttyACM0";
-var serBaud = 38400;
-var serverPort = 54321;
+var fs = require(nodeLib + 'safefs');
+var PathTelFile=nconf.get('telemetry:PathTelFile');
+var SEPARATOR = nconf.get('telemetry:SEPARATOR');
+
+var com = require(nodeLib + 'serialport');
+var express = require(nodeLib + 'express');
+var app = express();
+var http = require('http').Server(app);
+var io = require(nodeLib + 'socket.io')(http);
+
+var sys = require('sys');
+var exec = require('child_process').exec;
+
+var serPort = nconf.get('server:serPort');
+var serBaud = nconf.get('server:serBaud');
+var serverPort = nconf.get('server:serverPort');
+var version = nconf.get('server:version');
+var videoFeedPort = nconf.get('server:videoFeedPort');
+
 
 //Not nice, implement asciimo: https://github.com/Marak/asciimo
 function greetings() {
 
  
 }
+
+var serverADDR = 'N/A';
 var LogR = 0;
 var TelemetryFN = "";
 var prevTel="";
 var prevPitch="";
-
-var SEPARATOR = ","
-var version = "0.2";
 
 var ArduHeader;
 var ArduRead = {};
@@ -37,17 +56,34 @@ serialPort.on('open',function() {
 });
 
 
+//Get IP address http://stackoverflow.com/questions/3653065/get-local-ip-address-in-node-js
+
+var os = require('os');
+var ifaces = os.networkInterfaces();
+
+Object.keys(ifaces).forEach(function (ifname) {
+  var alias = 0
+    ;
+
+  ifaces[ifname].forEach(function (iface) {
+    if ('IPv4' !== iface.family || iface.internal !== false) {
+      // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+      return;
+    }
+
+    if (alias >= 1) {
+      // this single interface has multiple ipv4 addresses
+      console.log(ifname + ':' + alias, iface.address);
+    } else {
+      // this interface has only one ipv4 adress
+      serverADDR = iface.address;
+    }
+  });
+});
+//---------------
 
 
-//--------------------------------------
 
-var express = require('/usr/local/lib/node_modules/express');
-var app = express();
-var http = require('http').Server(app);
-var io = require('/usr/local/lib/node_modules/socket.io')(http);
-
-var sys = require('sys');
-var exec = require('child_process').exec;
 
 app.use(express.static(__dirname + '/public'));
 // Routers
@@ -114,45 +150,25 @@ app.get('/REBOOT', function(req, res) {
 
 }
 
-// Logging middleware
 
-//
-//var logF = function(data){  
-// 
-//     if (LogR == 1 && prevPitch != ArduRead['pitch'])
-//     {
-//      prevPitch = ArduRead['pitch']
-//      LogRow = new Date().getTime() + SEPARATOR;
-//      LogRow = LogRow + data;
-//  fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
-//		  if (err) {
-//		  console.log('ERROR: ' + err);
-//		  console.log(LogRow + '\n' )
-//		  LogR=0;
-//		  }
-//		});
-//  fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
-//    }
-//  };
-
-//Triggered when new data cames from the serial port
-//eventEmitter.on('log', logF(data));
- 
 io.on('connection', function(socket){
-  socket.emit('connected', version, ArduRead);  
-  console.log('New socket.io connection - id: %s', socket.id);
-  //Add here trigger for remote update event
+  //socket.emit('connected', version, ArduRead);  
   
-  //var LogRow;  
+   var myDate = new Date();
+   var startMessage = 'Connected ' + myDate.getHours() + ':' + myDate.getMinutes() + ':' + myDate.getSeconds()+ ' v' + version + ' @' + serverADDR;
+    socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, ArduRead);
+    socket.emit('serverADDR', serverADDR);
+    console.log('New socket.io connection - id: %s', socket.id);
+  
   setInterval(function(){
    socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal'], ArduRead['Event']);
   //console.log(ArduRead['yaw'] + ArduRead['Event']);
   }, 250);
  
   socket.on('Video', function(Video){
-   socket.emit('CMD', Video); 		
+   socket.emit('CMD', Video);
     function puts(error, stdout, stderr) { sys.puts(stdout) }
-    exec('sudo bash /home/pi/Documents/Sketches/Bailey/server/scripts/' + Video, puts);
+    exec('sudo bash /home/pi/Bailey/server/scripts/' + Video, puts);
       });
   
   //Set commands goes to Arduino directly
@@ -221,31 +237,6 @@ io.on('connection', function(socket){
     console.log('Disconnected id: %s', socket.id);
 
   });  
- 
-   // Measuring temperature
-  //setInterval(function(){
-  //  child = exec("cat /sys/class/thermal/thermal_zone0/temp", function (error, stdout, stderr) {
-  //  if (error !== null) {
-  //    console.log('exec error: ' + error);
-  //  } else {
-  //    //Es necesario mandar el tiempo (eje X) y un valor de temperatura (eje Y).
-  //     var temp = parseFloat(stdout)/1000;
-  //     socket.emit('temperatureUpdate', temp); 
-  //  
-  //  }
-  //});}, 5000);
- 
-  // Measuring CPU
-  // setInterval(function(){
-  //  child = exec("top -d 0.5 -b -n2 | grep 'Cpu(s)'|tail -n 1 | awk '{print $2 + $4}'", function (error, stdout, stderr) {
-  //  if (error !== null) {
-  //    console.log('exec error: ' + error);
-  //  } else {
-  //    //Es necesario mandar el tiempo (eje X) y un valor de temperatura (eje Y).
-  //    socket.emit('cpuUsageUpdate', parseFloat(stdout)); 
-  //
-  //  }
-  //});}, 10000);
  
  
 });
