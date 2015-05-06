@@ -93,48 +93,29 @@ app.get('/', function(req, res){
   res.end;
 });
 
-app.get('/found', function(req, res){
-  res.sendFile(__dirname + '/public/index.html');
-  res.end;
-});
+
 app.get('/d3test', function(req, res) {
   res.sendFile(__dirname + '/public/d3test.html');
   res.end;
 });
 
+app.get('/d3', function(req, res) {
+  res.sendFile(__dirname + '/public/D3.html');
+  res.end;
+});
 
 app.get('/livedata', function(req, res) {
-  res.sendFile(__dirname + '/public/livedata.htm');
-  res.end;
-});
-app.get('/livedatav2', function(req, res) {
-  res.sendFile(__dirname + '/public/livedata2.htm');
-  res.end;
-});
-
-app.get('/ypr', function(req, res) {
-  res.sendFile(__dirname + '/public/ypr2.htm');
+  res.sendFile(__dirname + '/public/livedata.html');
   res.end;
 });
 
 app.get('/test', function(req, res) {
-  res.sendFile(__dirname + '/public/test.htm');
-  res.end;
-});
-
-app.get('/tb', function(req, res) {
-  res.sendFile(__dirname + '/public/tempbatt.htm');
+  res.sendFile(__dirname + '/public/test.html');
   res.end;
 });
 
 app.get('/vj', function(req, res) {
   res.sendFile(__dirname + '/public/robotj.html');
-  res.end;
-});
-
-//Virtul joystick for mobile
-app.get('/vjm', function(req, res) {
-  res.sendFile(__dirname + '/public/robotjm.html');
   res.end;
 });
 
@@ -161,9 +142,18 @@ io.on('connection', function(socket){
     console.log('New socket.io connection - id: %s', socket.id);
   
   setInterval(function(){
-   socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal'], ArduRead['Event']);
+   socket.emit('status', ArduRead['yaw'], ArduRead['pitch'], ArduRead['roll'], ArduRead['bal']);
   //console.log(ArduRead['yaw'] + ArduRead['Event']);
   }, 250);
+  
+  setInterval(function(){
+
+  var usage = "N/A";
+  var temperature = fs.readFileSync("/sys/class/thermal/thermal_zone0/temp");
+temperature = ((temperature/1000).toPrecision(3)) + "°C";
+
+  socket.emit("CPUInfo", temperature, usage);
+  }, 3 * 1000);
  
   socket.on('Video', function(Video){
    socket.emit('CMD', Video);

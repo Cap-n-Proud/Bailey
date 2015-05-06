@@ -39,7 +39,27 @@
     <aside class="left-off-canvas-menu">
       <ul class="off-canvas-list">
         <li><label>Settings</label></li>
-
+        <!--<li class="has-submenu"><a href="#">Settings</a>
+            <ul class="left-submenu">
+                <li class="back"><a href="#">Back</a></li>
+                <li><label>Level 1</label></li>
+                <li><a href="settings.html">Link 1</a></li>
+                <li class="has-submenu"><a href="#">Link 2 w/ submenu</a>
+                    <ul class="left-submenu">
+                        <li class="back"><a href="#">Back</a></li>
+                        <li><label>Level 2</label></li>
+                        <li><a href="#">...</a></li>
+                    </ul>
+                </li>
+                <li><a href="#">...</a></li>
+            </ul>
+        </li>
+        <li><a href="#">The Encyclopedists</a></li>
+        <li><a href="#">The Mayors</a></li>
+        <li><a href="#">The Traders</a></li>
+        <li><a href="#">The Merchant Princes</a></li>
+        -->
+        
  
 <!--Motor-->
       <li>
@@ -126,27 +146,7 @@
                     &nbsp;
                     </div>
                </div>  
-         </li>   
-
-         <!--  Telemetry GPH -->
-         <li>
-       <div class="row">
-                    <div class="small-6 columns">
-                     <i class="fa fa-line-chart  fa-2x"></i>
-                      <div class="switch round small right"><input id="tGPH" type="checkbox" onclick="toggleTelemetryGPH(this)"><label for="tGPH"></label></div>
-                    </div>
-                    
-                    <div class="small-3 columns">
-                    &nbsp;
-                    </div>
-                    
-                    <div class="small-3 columns">
-                    &nbsp;
-                    </div>
-               </div>  
-         </li>
-         
-         <li>
+         </li>      <li>
        <div class="row">
                     <div class="small-6 columns">
                       <a href="#" onclick="shutdown()" class="alert button round" style="color:red;"> <i class="fa fa-power-off"></i></a>
@@ -169,7 +169,25 @@
     <aside class="right-off-canvas-menu">
       <ul class="off-canvas-list">
         <li><label>Commands</label></li>
-
+       <!-- <li><a href="#">Hari Seldon</a></li>
+        <li class="has-submenu"><a href="#">R. Giskard Reventlov</a>
+            <ul class="right-submenu">
+                <li class="back"><a href="#">Back</a></li>
+                <li><label>Level 1</label></li>
+                
+                <li>
+                
+                </li>
+                <li class="has-submenu"><a href="#">Link 2 w/ submenu</a>
+                    <ul class="right-submenu">
+                        <li class="back"><a href="#">Back</a></li>
+                        <li><label>Level 2</label></li>
+                        <li><a href="#">...</a></li>
+                    </ul>
+                </li>
+                <li><a href="#">...</a></li>
+            </ul>
+        </li>-->
         <li>
 <!--    right side-->
         </li>
@@ -183,7 +201,38 @@
 
     <div class="row">
         <div class="medium-2 columns">
-     
+           <!-- <span class="labelSwitch">Motors</span>
+
+            <div class="switch round medium">
+                <input id="Motors" onchange="MotorF(this)" type="checkbox">
+                <label for="Motors"></label>
+            </div>
+            <span class="labelSwitch">Auto mode</span>
+
+            <div class="switch round medium">
+                <input id="Auto" type="checkbox"> <label for="Auto"></label>
+            </div>
+            <span class="labelSwitch">Log</span>
+
+            <div class="switch round medium">
+                <input id="Log" onchange="LogF(this)" type="checkbox">
+                <label for="Log"></label>
+            </div>
+            <span class="labelSwitch">Auto-tune</span>
+
+            <div class="switch round medium">
+                <input id="Autotune" onclick="AutoTune(this)" type="checkbox">
+                <label for="Autotune"></label>
+            </div>
+            <span class="labelSwitch">Video</span>
+
+            <div class="switch round medium">
+                <input id="Video" onclick="VideoF(this)" type="checkbox">
+                <label for="Video"></label>
+            </div>
+            <a class="button round tiny" href="#" onclick=
+            "prntCfg()">config</a> <a class="button round tiny" href="#"
+            onclick="sdown()">shutdown</a>-->
         </div>
 
 
@@ -267,9 +316,11 @@
   </section>
 
   <section role="tabpanel" aria-hidden="true" class="content" id="panel2-3">
-    <h2>Optional content goes here...</h2>
+    <h2>Third panel content goes here...</h2>
   </section>
-
+  <section role="tabpanel" aria-hidden="true" class="content" id="panel2-4">
+    <h2>Fourth panel content goes here...</h2>
+  </section>
 </div>
         </div>
 
@@ -280,7 +331,7 @@
             <ul class="tabs" data-tab role="tablist">
   <li class="tab-title active" role="presentational" ><a href="#panel2-1" role="tab" tabindex="0" aria-selected="true" controls="panel2-1"><div class="tabItem">CAM</div></a></li>
   <li class="tab-title" role="presentational" ><a href="#panel2-2" role="tab" tabindex="0"aria-selected="false" controls="panel2-2">PID</a></li>
-  <li class="tab-title" role="presentational"><a href="#panel2-3" role="tab" tabindex="0" aria-selected="false" controls="panel2-3">OPT</a></li>
+  <li class="tab-title" role="presentational"><a href="#panel2-3" role="tab" tabindex="0" aria-selected="false" controls="panel2-3">Tab 3</a></li>
 <!--  <li class="tab-title" role="presentational" ><a href="#panel2-4" role="tab" tabindex="0" aria-selected="false" controls="panel2-4">Tab 4</a></li>-->
 </ul>
         <!--Closes the row-->
@@ -409,8 +460,7 @@ var socket = io();
     }
     }
 
-    
-    
+
 		
 
     function LogF(element){
@@ -440,7 +490,7 @@ var socket = io();
 
     }
 
-    function shutdown(){
+    function sdown(){
     socket.emit('SHUTDOWN', "now"); 
     }
 
@@ -476,8 +526,16 @@ var socket = io();
     //socket.on('connected', function(V, ArduRead){
     //   started=0;
     //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
-      //Set defalut values for the PID sliders
- 
+    //   //Set defalut values for the PID sliders
+    //   var PIDSlider = document.getElementsByClassName("PIDControlSlider");
+    //   var arrayLength = SliderID.length;
+    //           
+    //   for (var i = 0; i < arrayLength; i++) {
+    //       document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider[i].id]);
+    //       document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+    //       document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
+    //       document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(ArduRead[PIDSlider[i].id]);
+    //   }
     //     });
 
    
@@ -537,14 +595,14 @@ var socket = io();
     
     }
     
-    socket.on('connected', function(info, serverAddress, sPort, videoPort, ArduRead){
+    socket.on('connected', function(info, serverAddress, serverPort, videoPort, ArduRead){
     started=0;
    
    serverADDR = serverAddress.toString();
-    serverPort = sPort.toString(); 
+    serverPort = serverPort.toString(); 
     videoFeedPort = videoPort.toString();
     document.getElementById("botControl").src = 'http://' + serverADDR + ':' + serverPort + '/vj';
-    document.getElementById("telemetryGPH").src = '';
+    document.getElementById("telemetryGPH").src = 'http://' + serverADDR + ':' + serverPort + '/livedata.htm';
     
    document.getElementById("Info").innerHTML = info;
    //document.getElementById("CMD").innerHTML = 'http://' + serverADDR + ':' + serverPort + '/vj';
@@ -592,34 +650,8 @@ var socket = io();
 	function takeSnapshot(element) {
 	  socket.emit('takeSnapShot');	
 	}
-	
-function toggleTelemetryGPH(element){
 
-    if (element.checked == true) {
-      document.getElementById('telemetryGPH').src = document.getElementById('telemetryGPH').src = document.getElementById("telemetryGPH").src = 'http://' + serverADDR + ':' + serverPort + '/livedata.html';
-      document.getElementById("Info").innerHTML = 'http://' + serverADDR + ':' + serverPort + '/livedata.html';
-
-    }
-    else
-    {
-      document.getElementById("telemetryGPH").src = '';//'default.html';
-  
-    }
-    }
-
-//This is better than repeating the code for every slider, need to find a way of making it work...
-    function setSliders2(ArduRead){
-         var PIDSlider = document.getElementsByClassName("PIDControlSlider");
-      var arrayLength = SliderID.length;
-              
-      for (var i = 0; i < arrayLength; i++) {
-          document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(ArduRead[PIDSlider[i].id]);
-      }
     
-    }
     </script> 
 
       <script src="js/foundation/js/vendor/jquery.js"></script>
