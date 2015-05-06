@@ -197,6 +197,12 @@
  <iframe id="videoFeed" src="default.html" width="330" height="250" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>   
   </section>
   <section role="tabpanel" aria-hidden="true" class="content" id="panel2-2">
+    
+    <div class="row">
+  <div class="small-4 columns"><span class="labelPID">Angle</span></div>
+  <div class="small-4 columns"><span class="labelPID">Angle Agg</span></div>
+  <div class="small-4  columns"><span class="labelPID">Speed</span></div>
+</div>
     <ul class="small-block-grid-9">
                 <li><output class="PIDSliderLabel" id=
                 "APIDConKpVal"></output>&nbsp; <input class="PIDControlSlider"
@@ -252,18 +258,30 @@
                 step="1" type="range" value="80"></li>
 
 
-                <li>
-                    <output id="calibratedZeroAngleVal"></output>&nbsp;
-                    <input class="AngleControlSlider" id="calibratedZeroAngle"
-                    max="400" min="-400" oninput=
-                    "calibratedZeroAngleVal.value=value" step="1" type=
-                    "range">&nbsp;<input id="right-label" placeholder=
-                    "SCMD command" style="width:150px;" type=
-                    "text">&nbsp;<a class="button round tiny" href="#" onclick=
-                    "sendCMD()">SCMD</a>
-                </li>
+
             </ul>
-  
+                  
+                  <div class="row">
+		    <div class="small-1 columns">
+		      <output id="calibratedZeroAngleVal"></output>
+		    </div>
+		    <div class="small-5 columns">
+		      <input class="AngleControlSlider" id="calibratedZeroAngle" max="400" min="-400" oninput="calibratedZeroAngleVal.value=value" step="1" type="range">
+                    </div>
+		    
+		    <div class="small-1 columns">
+		    
+		    </div>
+		    
+		    <div class="small-3 columns">
+		      <input id="right-label" placeholder="SCMD command" type="text">
+		    </div>
+		    
+		    <div class="small-2 columns">
+		      <a class="button round tiny" href="#" onclick="sendCMD()">SCMD</a>
+		    </div>
+		</div>
+                    
   </section>
 
   <section role="tabpanel" aria-hidden="true" class="content" id="panel2-3">

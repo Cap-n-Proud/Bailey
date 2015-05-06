@@ -16,8 +16,21 @@ body {
     background: #282828; !important;
      
 }
+
 .labelSwitch {
     color: white;
+}
+
+.labelPID {
+    color: white;
+    text-align: center;
+     font-size: 0.875em; 
+}
+
+.PIDSliderLabel{
+    color: white;
+    text-align: center;
+     font-size: 0.875em; 
 }
 
 span,
