@@ -6,11 +6,10 @@ void RemoteRead(){
 }
 
  void printCommand() {
-	char *arg = SCmd.next();
-
-	
+  char *arg = SCmd.next();
  }
- 
+
+/* 
 void RemoteUpload()
 { //http://forum.arduino.cc/index.php?topic=85523.0
   char *arg = SCmd.next();
@@ -48,19 +47,94 @@ void RemoteUpload()
   }
 
 }
+
+ */
+
+void TelemetryTX()
+{ // for help on dtostrf http://forum.arduino.cc/index.php?topic=85523.0
+  char *arg = SCmd.next();
+  String line = "";
+  if (!configuration.debug){      
+          //balanceKalmanFilter.correct(dISTE);
+          char buffer[10];
+           if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
+            line = "T" + SEPARATOR
+	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
+          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
+          + dtostrf(roll, 10, 3, buffer) + SEPARATOR
+	  + dtostrf(pitchd1, 10, 3, buffer) + SEPARATOR
+          //+ dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
+          + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
+          + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
+          + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
+          + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
+          + LoopT + SEPARATOR	
+	  + LastEvent;
+	  Serial.println(line);
+  }
+
+}
+
+//Transmits the PID parmaeters. To be called upon initialization event and every time a parameter changes
+void PIDParamTX()
+{ 
+  char *arg = SCmd.next();
+  String line = "";
+  if (!configuration.debug){
+    line = "PID" + SEPARATOR
+	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
+          + int(configuration.speedPIDKi* 10000) + SEPARATOR
+          + int(configuration.speedPIDKd * 10000) + SEPARATOR
+          + int(configuration.anglePIDConKp * 100) + SEPARATOR
+          + int(configuration.anglePIDConKi * 100) + SEPARATOR
+          + int(configuration.anglePIDConKd * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKp * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKi * 100) + SEPARATOR
+          + int(configuration.anglePIDAggKd * 100) + SEPARATOR
+          + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
+          + int(configuration.calibratedZeroAngle * 100); 
+          
+	  Serial.println(line);
+  }
+
+}
+
+//Transmits the system parmaeters. To be called upon initialization event and every time a parameter changes
+void SYSParamTX()
+{ 
+  char *arg = SCmd.next();
+  String line = "";
+  if (!configuration.debug){
+      line = "SYS" + SEPARATOR
+      + configuration.FirmwareVersion;
+          
+	  Serial.println(line);
+  }
+
+}
 void RemoteInit()
 {
+  //Initialze the headers for the various dictionaries
   //These MUST be in the same order as in RemoteUpload()
- String headers = 	"HEADERS" + SEPARATOR +
+ //TH - Telemetry
+ //PIDH - PID
+ //SYSH - System
+ 
+ String headers = "TH" + SEPARATOR +
 		"yaw" + SEPARATOR +
 		"pitch" + SEPARATOR +
 		"roll" + SEPARATOR +
-		"bal" + SEPARATOR +
+		"pitchSpeed" + SEPARATOR +		
+		//"bal" + SEPARATOR +
 		"dISTE" + SEPARATOR +
 		"anglePIDOutput" + SEPARATOR +
 		"leftMotorSpeed" + SEPARATOR +
 		"rightMotorSpeed" + SEPARATOR +
-		"LoopT"+ SEPARATOR +
+		"LoopT" + SEPARATOR +
+		"LastEvent";
+	    Serial.println(headers);
+  delay(100);
+  String headers = "PIDH" + SEPARATOR +		
 		"speedPIDKp" + SEPARATOR +
 		"speedPIDKi" + SEPARATOR +
 		"speedPIDKd" + SEPARATOR +
@@ -71,8 +145,10 @@ void RemoteInit()
 		"anglePIDAggKi" + SEPARATOR +
 		"anglePIDAggKd" + SEPARATOR +
 		"TriggerAngleAggressive" + SEPARATOR +
-		"calibratedZeroAngle"+ SEPARATOR +
-		"Event"+ SEPARATOR + 
+		"calibratedZeroAngle";		
+	    Serial.println(headers);
+    delay(100);
+    String headers = 	"SYSH" + SEPARATOR +		 
                 "FirmwareVersion";
 	    Serial.println(headers);
 }
@@ -84,32 +160,58 @@ void setCommand()
 	if (*value != NULL) 
       {
 		// parameters
-		if (String("SPIDKp").equals(arg))
-		configuration.speedPIDKp = atof(value)/10000;                  
-                else if (String("SPIDKi").equals(arg))
+		if (String("SPIDKp").equals(arg)){
+		configuration.speedPIDKp = atof(value)/10000;
+		PIDParamTX();
+		}
+                else if (String("SPIDKi").equals(arg)){
 		configuration.speedPIDKi = atof(value)/10000;
-		else if (String("SPIDKd").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("SPIDKd").equals(arg)){
 		configuration.speedPIDKd = atof(value)/10000;
-		else if (String("speedPIDOutputLowerLimit").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("speedPIDOutputLowerLimit").equals(arg)){
 		configuration.speedPIDOutputLowerLimit = atof(value);
-		else if (String("speedPIDOutputHigherLimit").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("speedPIDOutputHigherLimit").equals(arg)){
 		configuration.speedPIDOutputHigherLimit = atof(value);
-		else if (String("APIDAggKp").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("APIDAggKp").equals(arg)){
 		configuration.anglePIDAggKp = atof(value)/100;
-		else if (String("APIDAggKi").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("APIDAggKi").equals(arg)){
 		configuration.anglePIDAggKi = atof(value)/100;
-		else if (String("APIDAggKd").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("APIDAggKd").equals(arg)){
 		configuration.anglePIDAggKd = atof(value)/100;
-		else if (String("APIDConKp").equals(arg))
+		PIDParamTX();
+		}
+                else if (String("APIDConKp").equals(arg)){
 		configuration.anglePIDConKp = atof(value)/100;
-                else if (String("APIDConKi").equals(arg))
+                PIDParamTX();
+		}
+                else if (String("APIDConKi").equals(arg)){
 		configuration.anglePIDConKi = atof(value)/100;
-                else if (String("APIDConKd").equals(arg))
+                PIDParamTX();
+		}
+                else if (String("APIDConKd").equals(arg)){
 		configuration.anglePIDConKd = atof(value)/100;
-                else if (String("TriggerAngleAggressive").equals(arg))
+                PIDParamTX();
+		}
+                else if (String("TriggerAngleAggressive").equals(arg)){
 		configuration.anglePIDConKd = atof(value)/100;
-                else if (String("calibratedZeroAngle").equals(arg))
+                PIDParamTX();
+		}
+                else if (String("calibratedZeroAngle").equals(arg)){
 		configuration.calibratedZeroAngle = atof(value)/100;
+                PIDParamTX();
+		}
                 else if (String("Motors").equals(arg)){
                   configuration.motorsON = atoi(value);
                   if (atoi(value)==0)
@@ -118,7 +220,7 @@ void setCommand()
                     motorRight.setSpeed(0); 
                     }
                     
-                  }
+                }
           
           
                 else if (String("SerialDebug").equals(arg)){
@@ -224,7 +326,15 @@ void setCommand()
 		else if (String("debugSampleRate").equals(arg))
 		configuration.debugSampleRate = atoi(value);
 		
-                else if (String("printConfig").equals(arg)) {
+		//------------------ Comm Functions ------------------ 
+                else if (String("PIDParamTX").equals(arg))
+		PIDParamTX();
+		else if (String("RemoteInit").equals(arg))
+		RemoteInit();
+		else if (String("SYSParamTX").equals(arg))
+		SYSParamTX();		
+		else if (String("printConfig").equals(arg)) {
+		Serial.println("DebugCFG");
 		Serial.println("*** Configuration");
 		Serial.println("*** --------------------------------------------------");
 		Serial.print("*** configuration.speedPIDKp = ");

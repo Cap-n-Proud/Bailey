@@ -6,9 +6,6 @@ int loopCounter = 0;
 int lastSpeedUpdate = 0;
 int lastDebugEncoders = 0;
 
-//TimedAction debugEncodersTimedAction = TimedAction(100,debugEncoders);
-//TimedAction updateMotorSpeedsTimedAction = TimedAction(20,updateMotorSpeeds);
-
  void debugEncoders() {
   Serial.print("L: ");
   Serial.print(leftMotorPosition);
@@ -21,7 +18,7 @@ int lastDebugEncoders = 0;
 
 }
 
-//Updates the motor speeds and teh SpeedPID input
+//Updates the motor speeds and the SpeedPID input
 void updateMotorSpeeds() {
   leftMotorPosition = - MotorLeft.read(); //The minus sign is needed as the motor directions are opposite
   rightMotorPosition = MotorRight.read();

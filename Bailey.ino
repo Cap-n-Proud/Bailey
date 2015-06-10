@@ -1,48 +1,43 @@
+//------------------ Libraries ------------------
 #include <FreeSixIMU.h> // imu. www.varesano.net/projects/hardware/FreeIMU#library
+                        // Try also: https://github.com/TKJElectronics/Example-Sketch-for-IMU-including-Kalman-filter.git 
+//Do we need the following two? They might be included in the FreeSixIMU. Also check http://www.i2cdevlib.com/
 #include <FIMU_ADXL345.h> // imu
 #include <FIMU_ITG3200.h> // imu
 #include <Wire.h> // for i2c
+
 //#include <SoftwareSerial.h>
-#include <PID_v1.h> //github.com/mwoodward/Arduino-PID-Library
-#include <Button.h>   //github.com/JChristensen/Button 
-#include <TimedAction.h> // for updating sensors and debug
+#include <PID_v1.h> // https://github.com/br3ttb/Arduino-PID-Library.git
+#include <Button.h>   // github.com/JChristensen/Button 
+#include <TimedAction.h> // for updating sensors and debug http://bit.ly/pATDBi http://playground.arduino.cc/Code/TimedAction
 #include <EEPROM.h> // for storing configuraion
-#include <avr/wdt.h> // watchdog
-#include <MovingAvarageFilter.h> //github.com/sebnil/Moving-Avarage-Filter--Arduino-Library-
-#include <FIR.h> // github.com/sebnil/FIR-filter-Arduino-Library
+#include <avr/wdt.h> // watchdog http://savannah.nongnu.org/projects/avr-libc/
+#include <MovingAvarageFilter.h> // github.com/sebnil/Moving-Avarage-Filter--Arduino-Library-
+//#include <FIR.h> // github.com/sebnil/FIR-filter-Arduino-Library
 #include <KalmanFilter.h> // github.com/nut-code-monkey/KalmanFilter-for-Arduino
+                          // Try also: https://github.com/TKJElectronics/KalmanFilter.git
 
 // This optional setting causes Encoder to use more optimized code,
 // It must be defined before Encoder.h is included.
 //#define ENCODER_OPTIMIZE_INTERRUPTS
-#include <Encoder.h> //https://www.pjrc.com/teensy/td_libs_Encoder.html
-#include <L29x.h>
+#include <Encoder.h> // https://www.pjrc.com/teensy/td_libs_Encoder.html
+#include <L29x.h> // https://github.com/sebnil/L29x.git 
 
-#define SERIAL_BAUD 38400
-#define CONFIG_START 32
-#define SERIALCOMMAND_HARDWAREONLY
-#include <SerialCommand.h> //https://github.com/scogswell/ArduinoSerialCommand
+#define SERIALCOMMAND_HARDWAREONLY 
+#include <SerialCommand.h> // https://github.com/scogswell/ArduinoSerialCommand
 
+//------------------ Constants ------------------ 
 #define TO_RAD(x) (x * 0.01745329252)  // *pi/180
 #define TO_DEG(x) (x * 57.2957795131)  // *180/pi
 #define speedMultiplier 1
 #define LCDSerial Serial1 // 18 (TX);
+#define SERIAL_BAUD 38400
+#define CONFIG_START 32 //EEPROM address to start the config
 
-L29x motorRight(8, 9, 10); // enable (PWM), motor pin 1, motor pin 2
-L29x motorLeft(11, 12, 13);
-// enable (PWM), motor pin 1, motor pin 2
-
-//Button motorBtn(13, false, false, 20);
-const uint8_t LED_PIN = 13;
-String SEPARATOR = ","; //Used as separator for telemetry
-
-// Tell it where to store your config data in EEPROM
-boolean LCD_Output = false;
-int debug = 0;
-int particleNumber = 0;
 /* Configutation parameters */
 struct Configuration {
   String FirmwareVersion;
+  
   double speedPIDKp;
   double speedPIDKi;
   double speedPIDKd;
@@ -59,22 +54,41 @@ struct Configuration {
   double TriggerAngleAggressive;
   double calibratedZeroAngle;
   uint8_t anglePIDSampling;
-  double angleKalmanFilterR;
   uint8_t speedPIDSampling;
+  
+  double angleKalmanFilterR;
   uint8_t angleSensorSampling;
   uint8_t motorSpeedSensorSampling;
   double speedKalmanFilterR;
-  uint8_t motorLeftMinimumSpeed;
-  uint8_t motorRightMinimumSpeed;
-  int motorsON;
-  boolean debug;
+  
+  int MotorLeftENABLEA;
+  int MotorLeftIN1;
+  int MotorLeftIN2;
+  int MotorRightENABLEA;
+  int MotorRightIN1;
+  int MotorRightIN2;
+  int leftEncoder1;
+  int leftEncoder2;
+  int rightEncoder1;
+  int rightEncoder2;
+  
   double steerGain;
   double throttleGain;
   double Maxsteer;
   double Maxthrottle;
+  uint8_t motorLeftMinimumSpeed;
+  uint8_t motorRightMinimumSpeed;
+  int motorsON;
+  
   int numParticles;
   double maxInteractions;
+  int SPOConfigEval;
+  boolean debugSPO;
+  double SPOspread = 0.10;
+  
   //int speakerPin;
+  
+  boolean debug;
   uint8_t debugLevel;
   uint8_t debugSampleRate;
   uint8_t speedPIDOutputDebug;
@@ -92,7 +106,7 @@ Configuration configuration;
 byte b[sizeof(Configuration)];
 
 double UserControl[1]; //Steer, Throttle
-float Thr = 0;
+// float Thr = 0; //CHECK IF NEEDED
 
 void setConfiguration(boolean force) {
   /* Flash is erased every time new code is uploaded. Write the default configuration to flash if first time */
@@ -118,13 +132,24 @@ void setConfiguration(boolean force) {
     configuration.anglePIDOutputLowerLimit = -100;
     configuration.anglePIDOutputHigherLimit = 100;
     
+    configuration.MotorLeftENABLEA = 8;
+    configuration.MotorLeftIN1 = 9;
+    configuration.MotorLeftIN2 = 10;
+    configuration.MotorRightENABLEA = 11;
+    configuration.MotorRightIN1 = 12;
+    configuration.MotorRightIN2 =13;
+    configuration.leftEncoder1 = 2;
+    configuration.leftEncoder2 = 4;
+    configuration.rightEncoder1 = 3;
+    configuration.rightEncoder2 = 5;
+  
     configuration.motorLeftMinimumSpeed = 55;//40;
     configuration.motorRightMinimumSpeed = 58;//44;
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
     configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
     configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
-    
+        
     configuration.motorsON = 0;
     configuration.debug = 0;
   
@@ -141,7 +166,10 @@ void setConfiguration(boolean force) {
   
     configuration.maxInteractions = 30;
     configuration.numParticles = 20;
-    
+    configuration.SPOConfigEval = 2000;
+    configuration.debugSPO = false;
+    //Define a percentage around the known stable values
+    configuration.SPOspread = 0.10;
     configuration.debugLevel = 0;
     configuration.debugSampleRate = 50;
     //  configuration.speedPIDSetpointDebug = 1;
@@ -167,6 +195,20 @@ void setConfiguration(boolean force) {
   }
 };
 
+
+//------------------ Definitions ------------------ 
+L29x motorRight(8, 9, 10); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
+L29x motorLeft(11, 12, 13);
+
+//Button motorBtn(13, false, false, 20);
+const uint8_t LED_PIN = 13;
+String SEPARATOR = ","; //Used as separator for telemetry
+
+// Tell it where to store your config data in EEPROM
+boolean LCD_Output = false;
+int debug = 0;
+int particleNumber = 0;
+
 /* Encoders */
 
 // This optional setting causes Encoder to use more optimized code,
@@ -177,13 +219,14 @@ void setConfiguration(boolean force) {
 //   Best Performance: both pins have interrupt capability
 //   Good Performance: only the first pin has interrupt capability
 //   Low Performance:  neither pin has interrupt capability
-#define leftEncoder1 2
-#define leftEncoder2 4
-#define rightEncoder1 3
-#define rightEncoder2 5
+//#define leftEncoder1 configuration.leftEncoder1
+//#define leftEncoder2 configuration.leftEncoder2
+//#define rightEncoder1 configuration.rightEncoder1
+//#define rightEncoder2 configuration.rightEncoder2
 
-Encoder MotorLeft(leftEncoder1, leftEncoder2);
-Encoder MotorRight(rightEncoder1, rightEncoder2);
+Encoder MotorLeft(configuration.leftEncoder1, configuration.leftEncoder2);
+Encoder MotorRight(configuration.rightEncoder1, configuration.rightEncoder2);
+
 
 long lastLeftMotorPosition  = 0;
 long lastRightMotorPosition  = 0;
@@ -198,28 +241,15 @@ float rightMotorSpeed;
 float speedKalmanFiltered = 0;
 float speedFIRFiltered = 0;
 
-// These take care of the timing of things
-TimedAction debugTimedAction = TimedAction(1000, debugEverything); //Print debug info
-TimedAction updateMotorStatusesTimedAction = TimedAction(20, updateMotorSpeeds); //
-TimedAction updateIMUSensorsTimedAction = TimedAction(20, updateIMUSensors);
-
-//TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
-
-//Reads serial for commands
-TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
-
-//Upload telemetry data
-TimedAction RemoteUploadTimedAction = TimedAction(250, RemoteUpload);
-
-//Swarn Particle Optimization
-TimedAction SwarnTimedAction = TimedAction(2000, SPO);
 
 SerialCommand SCmd;   // The SerialCommand object
 
 // imu variables
 float imuValues[6];
 float ypr[3];
-float pitch, roll, yaw;
+float pitch, roll, yaw, prev_pitch, prev_yaw, prev_roll;
+float pitchd1, pitchd2;
+
 long StartL=0, LoopT=0, StartL2=0;
 
 String LastEvent="";
@@ -229,18 +259,19 @@ double anglePIDSetpoint, anglePIDInput, anglePIDOutput;
 double speedPIDInput, speedPIDOutput, speedPIDSetpoint;
 double anglePIDInputFiltered;
 double ISTE = 0, dISTE = 0;
-int  AUTOTUNE = 0;
+int AUTOTUNE = 0;
 
 // filters
-MovingAvarageFilter speedMovingAvarageFilter(14); 
-MovingAvarageFilter angleMovingAvarageFilter(4);
+//CHECK if the moving average filters and the FIR are needed
+//MovingAvarageFilter speedMovingAvarageFilter(14); 
+//MovingAvarageFilter angleMovingAvarageFilter(4);
 KalmanFilter speedKalmanFilter;
 KalmanFilter angleKalmanFilter;
 KalmanFilter balanceKalmanFilter;
-FIR speedMovingAvarageFilter2;
+//FIR speedMovingAvarageFilter2;
 
 // The cascading PIDs. The tunings are updated from the remote
-PID anglePID(&anglePIDInput, &anglePIDOutput, &anglePIDSetpoint, 0, 0, 0, DIRECT); //REVERSE???
+PID anglePID(&anglePIDInput, &anglePIDOutput, &anglePIDSetpoint, 0, 0, 0, DIRECT); 
 PID speedPID(&speedPIDInput, &speedPIDOutput, &speedPIDSetpoint, 0, 0, 0, DIRECT);
 
 // Set the FreeSixIMU object. This handles the communcation to the IMU.
@@ -249,36 +280,31 @@ FreeSixIMU sixDOF = FreeSixIMU();
 //char notes[] = "ccggaagffeeddc "; // a space represents a rest
 //int beats[] = { 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 4 };
 //int tempo = 300;
- TimedAction LCDUpdateTimedAction = TimedAction(100, LCDUpdate);
 
 
-boolean debugSPO = false;
 String SPACER = " ";
 String Note = "";
 String LastEventSPO ="";
-char cbuffer[10];
+//char cbuffer[10]; //CHECK IF NEEDED
+
 //Init code goes in the main body of the sketch
-const int numParticles = 15; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
-double maxInteractions = 20;
+const int numParticles = configuration.numParticles; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
+double maxInteractions = configuration.maxInteractions;
 double bestParticle = 0;
 double bestIteraction = 0;
 double SPOiteraction = 0;
-//int feedbackTime = 3000; //feedback time in milliseconds. Maybe we can make it dynamic, first short time, after long time
 double bestGlobalFitness = 9999;
-//double maxIncreaseRate = 1; //condition to stop the particle test in before the feedbackTime if the error rate increase out of control
-//Define a percentage arounf the known stable values
-const int spread = 10;
-double    minKp =  configuration.anglePIDConKp * (1 - spread/100), 
- maxKp =  configuration.anglePIDConKp * (1 + spread/100),
- minKi =  configuration.anglePIDConKi * (1 - spread/100),
- maxKi =  configuration.anglePIDConKi * (1 + spread/100),
- minKd =  configuration.anglePIDConKd * (1 - spread/100), 
- maxKd =  configuration.anglePIDConKd * (1 + spread/100);
 
-//Serach space for test
-//double minKp=-5, maxKp=5, minKi=-5, maxKi=5, minKd=-5, maxKd=5;
 
-//double minKp = -20, maxKp = 20, minKi = -20, maxKi = 20, minKd = -50, maxKd =50;
+//------------------ SPO ------------------ 
+//Define search space for test
+double    minKp =  configuration.anglePIDConKp * (1 - configuration.SPOspread), 
+ maxKp =  configuration.anglePIDConKp * (1 + configuration.SPOspread),
+ minKi =  configuration.anglePIDConKi * (1 - configuration.SPOspread),
+ maxKi =  configuration.anglePIDConKi * (1 + configuration.SPOspread),
+ minKd =  configuration.anglePIDConKd * (1 - configuration.SPOspread), 
+ maxKd =  configuration.anglePIDConKd * (1 + configuration.SPOspread);
+
 //Need to be smarter. Define a function based on: a) domain, d/dt of ISTE 
 double maxVel = 5;//min(minKp, minKi)/10;
 
@@ -295,7 +321,7 @@ particle;
 
 particle swarn[numParticles]; 
 
-typedef struct //Defines the space where the partilce can move
+typedef struct //Defines the space where the particle can move
 {
   double minR;
   double maxR;        
@@ -304,14 +330,10 @@ space;
 
 space domain[2];
 
-
 double bestGlobalPosition[3];
 
-
-
+//------------------ Setup ------------------ 
 void setup() { 
-
-
   //pinMode(configuration.speakerPin, OUTPUT);
 
   Serial.begin(SERIAL_BAUD);
@@ -341,15 +363,15 @@ void setup() {
   // filters
   speedKalmanFilter.setState(0);
   balanceKalmanFilter.setState(0);
-  float coefficients[] = {
-    1,1,1,1,1,1,1,1,1              };
-  speedMovingAvarageFilter2.setCoefficients(coefficients);
+  //float coefficients[] = {
+  //  1,1,1,1,1,1,1,1,1              };
+  //speedMovingAvarageFilter2.setCoefficients(coefficients);
   //speedMovingAvarageFilter2.setNumberOfTaps(9);
-  speedMovingAvarageFilter2.setGain((float) (1/9));
+  //speedMovingAvarageFilter2.setGain((float) (1/9));
 
   //Serial.println("IMU...");
   delay(50);
-  sixDOF.init(); //begin the IMU
+  sixDOF.init(); //init the IMU
   delay(150);
   //Serial.println("OK...");
   if (LCD_Output){
@@ -367,7 +389,7 @@ void setup() {
   
   swarnInit();
   LastEvent = "Swarn ready";
-  RemoteInit();
+  //RemoteInit();
   
   // Setup callbacks for SerialCommand commands 
   SCmd.addCommand("SCMD", setCommand);       
@@ -376,21 +398,22 @@ void setup() {
 }
 
 void updateIMUSensors() {
-  double angleT;
+  prev_pitch = pitch;
   sixDOF.getYawPitchRoll(ypr);
+  yaw = ypr[0];
   roll = ypr[1];
   pitch = ypr[2];
-  yaw = ypr[0];
-  angleT = pitch; 
+  pitchd1 = pitch - prev_pitch;  
+  //angleT = pitch; 
   // move angle to around equilibrium
-  angleKalmanFilter.correct(angleT);
-  anglePIDInput = angleKalmanFilter.getState() - configuration.calibratedZeroAngle;// + configuration.throttleGain*UserControl[1]; //Need to add the input throttle 
+  angleKalmanFilter.correct(pitch);
+  anglePIDInput = angleKalmanFilter.getState();// Dont think it is needed here "- configuration.calibratedZeroAngle;"
 }
 
-
+//------------------ Main loop ------------------ 
 void loop() { 
-  wdt_reset();
   StartL = millis();
+  wdt_reset();
   
   if (LCD_Output){
    LCDUpdateTimedAction.check();
@@ -400,19 +423,18 @@ void loop() {
   updateIMUSensorsTimedAction.check();
   updateMotorStatusesTimedAction.check();
   RemoteReadTimedAction.check();
-  RemoteUploadTimedAction.check();
+  TelemetryTXTimedAction.check();
   
   if (AUTOTUNE==1) {
    SwarnTimedAction.check();    
   }
-  
 
     // Speed pid,  input is wheel speed, output is angleSetpoint
     speedPIDSetpoint =  configuration.Maxthrottle*UserControl[1];
     speedPID.Compute();
     anglePIDSetpoint = - speedPIDOutput;
 
-    // Update angle pid tuning
+    // Update angle PID tuning
    if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0) { 
       //we're close to setpoint, use conservative tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDConKp, (float)configuration.anglePIDConKi, (float)configuration.anglePIDConKd);
@@ -427,9 +449,9 @@ void loop() {
     }
 
     anglePID.Compute();
-    //If we are very close to the target we stop the motors to avoid overheating the motor driver
-    //angleKalmanFilter.correct(anglePIDOutput);
-    //anglePIDOutput = angleKalmanFilter.getState();
+    //Filter the angle with Kalman
+    angleKalmanFilter.correct(anglePIDOutput);
+    anglePIDOutput = angleKalmanFilter.getState();
     if (configuration.motorsON==1){
       motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
       motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
@@ -443,7 +465,7 @@ void loop() {
     debugTimedAction.check();
   
   LoopT = millis()-StartL;
-  dISTE = (LoopT*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch)*(anglePIDSetpoint - configuration.calibratedZeroAngle -pitch))/1000;  
+  dISTE = (LoopT/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
   ISTE = ISTE + dISTE;
 }
 
@@ -452,17 +474,17 @@ void debugEverything() {
   //debugImu();
   //debugAnglePID();
   //debugSpeedPID();
-  debugISE();
+  //debugISE();
   //debugAnglePIDCoeff();
   //debugSpeedPIDCoeff();
-  debugEncoders();
-  debugMotorSpeeds();
+  //debugEncoders();
+  //debugMotorSpeeds();
   //debugMotorCalibrations();
   //debugMotorSpeedCalibration();
   //debugChart2();
   //unrecognizedCMD();
-  debugLoopTime();
-  Serial.println();
+  //debugLoopTime();
+  //Serial.println();
 
 };
 
@@ -476,6 +498,5 @@ void LCDUpdate() {
   LCDSerial.print((float)configuration.speedPIDKd,2);
   cursorSet(13,0);
   LCDSerial.print(pitch,1);
-
 }
 
