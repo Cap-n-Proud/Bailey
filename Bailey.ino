@@ -40,7 +40,7 @@
 #define TO_RAD(x) (x * 0.01745329252)  // *pi/180
 #define TO_DEG(x) (x * 57.2957795131)  // *180/pi
 #define speedMultiplier 1
-#define LCDSerial Serial1 // 18 (TX);
+//#define LCDSerial Serial1 // 18 (TX);
 #define SERIAL_BAUD 38400
 #define CONFIG_START 32 //EEPROM address to start the config
 
@@ -161,7 +161,7 @@ void setConfiguration(boolean force) {
     configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
         
     configuration.motorsON = 0;
-    configuration.debug = 1;
+    configuration.debug = 0;
   
     configuration.TriggerAngleAggressive = 3.50;
     configuration.calibratedZeroAngle = 1.8;
@@ -207,8 +207,8 @@ void setConfiguration(boolean force) {
 
 
 //------------------ Definitions ------------------ 
-L29x motorRight(8, 9, 10); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
-L29x motorLeft(11, 12, 13);
+L29x motorRight(configuration.MotorLeftENABLEA , configuration.MotorLeftIN1, configuration.MotorLeftIN2); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
+L29x motorLeft(configuration.MotorRightENABLEA , configuration.MotorRightIN1 , configuration.MotorRightIN2);
 
 //Button motorBtn(13, false, false, 20);
 const uint8_t LED_PIN = 13;
@@ -367,17 +367,7 @@ void setup() {
 
   Serial.begin(SERIAL_BAUD);
   delay(50);
-  //Serial.println("connection estabilished");
-  if (LCD_Output)
-  {
-    LCDSerial.begin(9600); // set up serial port for 9600 baud
-    delay(500); // wait for display to boot up
-    backlightOn(0); 
-    cursorSet(0,0);
-    clearLCD();  
-    LCDSerial.print("Init. sequence");
-  }
-
+ 
   // Load config from eeprom
   setConfiguration(false);
   // init i2c and IMU
@@ -400,11 +390,7 @@ void setup() {
   delay(50);
   sixDOF.init(); //init the IMU
   delay(150);
-  //Serial.println("OK...");
-  if (LCD_Output){
-    clearLCD(); 
-    LCDSerial.print(" IMU");  
-  }
+
 
 
   if (configuration.debug==1)
@@ -513,18 +499,5 @@ void debugEverything() {
   Serial.println();
 
 };
-
-void LCDUpdate() {
-  clearLCD(); 
-  cursorSet(0,0);
-  LCDSerial.print(configuration.speedPIDKp,1);
-  cursorSet(4,0);
-  LCDSerial.print((float)configuration.speedPIDKi,2);
-  cursorSet(8,0); 
-  LCDSerial.print((float)configuration.speedPIDKd,2);
-  cursorSet(13,0);
-  LCDSerial.print(pitch,1);
-}
-
 
 

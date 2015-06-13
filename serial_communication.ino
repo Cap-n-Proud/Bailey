@@ -5,29 +5,100 @@ void RemoteRead(){
   SCmd.readSerial();     // We don't do much, just process serial commands 
 }
 
- void printCommand() {
+
+//Triggered by READ command
+void printCommand() {
   char *arg = SCmd.next();
+  
+   //SCMD PIDParamTX
+               if (String("PIDParamTX").equals(arg))
+		PIDParamTX();
+		else if (String("RemoteInit").equals(arg))
+		RemoteInit();
+		else if (String("SYSParamTX").equals(arg))
+		SYSParamTX();		
+		
+  
+  
+		else if (String("printConfig").equals(arg)) {
+		Serial.println("DebugCFG");
+		Serial.println("*** Configuration");
+		Serial.println("*** --------------------------------------------------");
+		Serial.print("*** configuration.speedPIDKp = ");
+		Serial.print(configuration.speedPIDKp);
+		Serial.print(";\n*** configuration.speedPIDKi = ");
+		Serial.print(configuration.speedPIDKi);
+		Serial.print(";\n*** configuration.speedPIDKd = ");
+		Serial.print(configuration.speedPIDKd,4);
+		Serial.print(";\n*** configuration.speedPIDOutputLowerLimit = ");
+		Serial.print(configuration.speedPIDOutputLowerLimit);
+		Serial.print(";\n*** configuration.speedPIDOutputHigherLimit = ");
+		Serial.print(configuration.speedPIDOutputHigherLimit);
+		Serial.print(";\n*** configuration.anglePIDAggKp = ");
+		Serial.print(configuration.anglePIDAggKp);
+		Serial.print(";\n*** configuration.anglePIDAggKi = ");
+		Serial.print(configuration.anglePIDAggKi);
+		Serial.print(";\n*** configuration.anglePIDAggKd = ");
+		Serial.print(configuration.anglePIDAggKd);
+		Serial.print(";\n*** configuration.anglePIDConKp = ");
+		Serial.print(configuration.anglePIDConKp);
+		Serial.print(";\n*** configuration.anglePIDConKi = ");
+		Serial.print(configuration.anglePIDConKi);
+		Serial.print(";\n*** configuration.anglePIDConKd = ");
+		Serial.print(configuration.anglePIDConKd);
+		Serial.print(";\n*** configuration.anglePIDLowerLimit = ");
+		Serial.print(configuration.anglePIDOutputLowerLimit);
+                Serial.print(";\n*** configuration.anglePIDHigherLimit = ");
+		Serial.print(configuration.anglePIDOutputHigherLimit);
+                Serial.print(";\n*** configuration.TriggerAngleAggressive = ");
+		Serial.print(configuration.TriggerAngleAggressive);
+               
+		Serial.print(";\n*** configuration.calibratedZeroAngle = ");
+		Serial.print(configuration.calibratedZeroAngle);
+		Serial.print(";\n*** configuration.anglePIDSampling = ");
+		Serial.print(configuration.anglePIDSampling);
+		Serial.print(";\n*** configuration.speedPIDSampling = ");
+		Serial.print(configuration.speedPIDSampling);
+		Serial.print(";\n*** configuration.angleKalmanFilterR = ");
+		Serial.print(configuration.angleKalmanFilterR);
+		Serial.print(";\n*** configuration.angleSensorSampling = ");
+		Serial.print(configuration.angleSensorSampling);
+		Serial.print(";\n*** configuration.motorSpeedSensorSampling = ");
+		Serial.print(configuration.motorSpeedSensorSampling);
+		Serial.print(";\n*** configuration.speedKalmanFilterR = ");
+		Serial.print(configuration.speedKalmanFilterR);
+		Serial.print(";\n*** configuration.motorLeftMinimumSpeed = ");
+		Serial.print(configuration.motorLeftMinimumSpeed);
+		Serial.print(";\n*** configuration.motorRightMinimumSpeed = ");
+		Serial.print(configuration.motorRightMinimumSpeed);
+		Serial.println("*** --------------------------------------------------");
+
+	          }
+  
+  
+  
  }
 
 void TelemetryTX()
 { // for help on dtostrf http://forum.arduino.cc/index.php?topic=85523.0
-  char *arg = SCmd.next();
+  //char *arg = SCmd.next();
   String line = "";
   if (!configuration.debug){      
           //balanceKalmanFilter.correct(dISTE);
           char buffer[10];
            //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
 line = "T" + SEPARATOR
-	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
-          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
-          + dtostrf(roll, 10, 3, buffer) + SEPARATOR
-	  + dtostrf(pitchd1, 10, 3, buffer) + SEPARATOR
-          + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
-          + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
-          + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + LoopT + SEPARATOR
-	  + LastEvent;
+	  + yaw + SEPARATOR
+          + pitch + SEPARATOR
+          + roll + SEPARATOR
+	  + pitchd1 + SEPARATOR
+          + dISTE + SEPARATOR
+          //+ anglePIDOutput + SEPARATOR
+          + leftMotorSpeed + SEPARATOR
+          + rightMotorSpeed + SEPARATOR
+          + LoopT; 
+          //+ SEPARATOR
+	  //+ LastEvent;
 	  Serial.println(line);
   }
 
@@ -36,11 +107,12 @@ line = "T" + SEPARATOR
 //Transmits the PID parmaeters. To be called upon initialization event and every time a parameter changes
 void PIDParamTX()
 { 
-  char *arg = SCmd.next();
+  //char *arg = SCmd.next();
   String line = "";
-  if (!configuration.debug){
-    line = "PID" + SEPARATOR;
-/*	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
+  //if (!configuration.debug)
+  {
+    line = "PID" + SEPARATOR
+	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
           + int(configuration.speedPIDKi* 10000) + SEPARATOR
           + int(configuration.speedPIDKd * 10000) + SEPARATOR
           + int(configuration.anglePIDConKp * 100) + SEPARATOR
@@ -50,7 +122,7 @@ void PIDParamTX()
           + int(configuration.anglePIDAggKi * 100) + SEPARATOR
           + int(configuration.anglePIDAggKd * 100) + SEPARATOR
           + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
-          + int(configuration.calibratedZeroAngle * 100);        */   
+          + int(configuration.calibratedZeroAngle * 100);          
 	  Serial.println(line);
   }
 
@@ -59,7 +131,7 @@ void PIDParamTX()
 //Transmits the system parmaeters. To be called upon initialization event and every time a parameter changes
 void SYSParamTX()
 { 
-  char *arg = SCmd.next();
+  //char *arg = SCmd.next();
   String line = "";
   if (!configuration.debug){
       line = "SYS" + SEPARATOR
@@ -69,6 +141,7 @@ void SYSParamTX()
   }
 
 }
+
 void RemoteInit()
 {
   //Initialze the headers for the various dictionaries
@@ -76,19 +149,20 @@ void RemoteInit()
  //TH - Telemetry
  //PIDH - PID
  //SYSH - System
- 
- String headers = "TH" + SEPARATOR +
+ String headers = "";
+ headers = "TH" + SEPARATOR +
 		"yaw" + SEPARATOR +
 		"pitch" + SEPARATOR +
 		"roll" + SEPARATOR +
 		"pitchSpeed" + SEPARATOR +		
 		//"bal" + SEPARATOR +
 		"dISTE" + SEPARATOR +
-		"anglePIDOutput" + SEPARATOR +
+		//"anglePIDOutput" + SEPARATOR +
 		"leftMotorSpeed" + SEPARATOR +
 		"rightMotorSpeed" + SEPARATOR +
-		"LoopT" + SEPARATOR +
-		"LastEvent";
+		"LoopT";
+                //+ SEPARATOR +
+		//"LastEvent";
 	    Serial.println(headers);
   delay(100);
   headers = "PIDH" + SEPARATOR +		
@@ -119,54 +193,70 @@ void setCommand()
 		// parameters
 		if (String("SPIDKp").equals(arg)){
 		configuration.speedPIDKp = atof(value)/10000;
-		PIDParamTX();
+		controlConfig();
+                PIDParamTX();
 		}
+                else if (String("test").equals(arg)){
+		  Serial.println("this is a test");
+                }
                 else if (String("SPIDKi").equals(arg)){
 		configuration.speedPIDKi = atof(value)/10000;
-		PIDParamTX();
+		controlConfig();
+                PIDParamTX();
 		}
                 else if (String("SPIDKd").equals(arg)){
 		configuration.speedPIDKd = atof(value)/10000;
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("speedPIDOutputLowerLimit").equals(arg)){
 		configuration.speedPIDOutputLowerLimit = atof(value);
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("speedPIDOutputHigherLimit").equals(arg)){
 		configuration.speedPIDOutputHigherLimit = atof(value);
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("APIDAggKp").equals(arg)){
 		configuration.anglePIDAggKp = atof(value)/100;
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("APIDAggKi").equals(arg)){
 		configuration.anglePIDAggKi = atof(value)/100;
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("APIDAggKd").equals(arg)){
 		configuration.anglePIDAggKd = atof(value)/100;
+                controlConfig();
 		PIDParamTX();
 		}
                 else if (String("APIDConKp").equals(arg)){
 		configuration.anglePIDConKp = atof(value)/100;
+                controlConfig();
                 PIDParamTX();
 		}
                 else if (String("APIDConKi").equals(arg)){
 		configuration.anglePIDConKi = atof(value)/100;
+                controlConfig();
                 PIDParamTX();
 		}
                 else if (String("APIDConKd").equals(arg)){
 		configuration.anglePIDConKd = atof(value)/100;
+                controlConfig();
                 PIDParamTX();
 		}
                 else if (String("TriggerAngleAggressive").equals(arg)){
 		configuration.anglePIDConKd = atof(value)/100;
+                controlConfig();
                 PIDParamTX();
 		}
                 else if (String("calibratedZeroAngle").equals(arg)){
 		configuration.calibratedZeroAngle = atof(value)/100;
+                controlConfig();
                 PIDParamTX();
 		}
                 else if (String("Motors").equals(arg)){
@@ -208,10 +298,16 @@ void setCommand()
 		else if (String("speedKalmanFilterR").equals(arg))
 		configuration.speedKalmanFilterR = atof(value);
 		else if (String("motorLeftMinimumSpeed").equals(arg))
+                {
 		configuration.motorLeftMinimumSpeed = atoi(value);
-		else if (String("motorRightMinimumSpeed").equals(arg))
-		configuration.motorRightMinimumSpeed = atoi(value);
-
+		
+                controlConfig();
+                }
+                else if (String("motorRightMinimumSpeed").equals(arg))
+                {
+                 configuration.motorRightMinimumSpeed = atoi(value);
+                 controlConfig();
+                }
 		else if (String("torqueScale").equals(arg)){
 		//The idea here is to give one command to proportionally scale the minimum for both motors  
                 configuration.motorRightMinimumSpeed = atoi(value)*configuration.motorRightMinimumSpeed;
@@ -283,75 +379,13 @@ void setCommand()
 		else if (String("debugSampleRate").equals(arg))
 		configuration.debugSampleRate = atoi(value);
 		
-		//------------------ Comm Functions ------------------ 
-                //SCMD PIDParamTX
-                else if (String("PIDParamTX").equals(arg))
-		PIDParamTX();
-		else if (String("RemoteInit").equals(arg))
-		RemoteInit();
-		else if (String("SYSParamTX").equals(arg))
-		SYSParamTX();		
-		else if (String("printConfig").equals(arg)) {
-		Serial.println("DebugCFG");
-		Serial.println("*** Configuration");
-		Serial.println("*** --------------------------------------------------");
-		Serial.print("*** configuration.speedPIDKp = ");
-		Serial.print(configuration.speedPIDKp);
-		Serial.print(";\n*** configuration.speedPIDKi = ");
-		Serial.print(configuration.speedPIDKi);
-		Serial.print(";\n*** configuration.speedPIDKd = ");
-		Serial.print(configuration.speedPIDKd,4);
-		Serial.print(";\n*** configuration.speedPIDOutputLowerLimit = ");
-		Serial.print(configuration.speedPIDOutputLowerLimit);
-		Serial.print(";\n*** configuration.speedPIDOutputHigherLimit = ");
-		Serial.print(configuration.speedPIDOutputHigherLimit);
-		Serial.print(";\n*** configuration.anglePIDAggKp = ");
-		Serial.print(configuration.anglePIDAggKp);
-		Serial.print(";\n*** configuration.anglePIDAggKi = ");
-		Serial.print(configuration.anglePIDAggKi);
-		Serial.print(";\n*** configuration.anglePIDAggKd = ");
-		Serial.print(configuration.anglePIDAggKd);
-		Serial.print(";\n*** configuration.anglePIDConKp = ");
-		Serial.print(configuration.anglePIDConKp);
-		Serial.print(";\n*** configuration.anglePIDConKi = ");
-		Serial.print(configuration.anglePIDConKi);
-		Serial.print(";\n*** configuration.anglePIDConKd = ");
-		Serial.print(configuration.anglePIDConKd);
-		Serial.print(";\n*** configuration.anglePIDLowerLimit = ");
-		Serial.print(configuration.anglePIDOutputLowerLimit);
-                Serial.print(";\n*** configuration.anglePIDHigherLimit = ");
-		Serial.print(configuration.anglePIDOutputHigherLimit);
-                Serial.print(";\n*** configuration.TriggerAngleAggressive = ");
-		Serial.print(configuration.TriggerAngleAggressive);
-               
-		Serial.print(";\n*** configuration.calibratedZeroAngle = ");
-		Serial.print(configuration.calibratedZeroAngle);
-		Serial.print(";\n*** configuration.anglePIDSampling = ");
-		Serial.print(configuration.anglePIDSampling);
-		Serial.print(";\n*** configuration.speedPIDSampling = ");
-		Serial.print(configuration.speedPIDSampling);
-		Serial.print(";\n*** configuration.angleKalmanFilterR = ");
-		Serial.print(configuration.angleKalmanFilterR);
-		Serial.print(";\n*** configuration.angleSensorSampling = ");
-		Serial.print(configuration.angleSensorSampling);
-		Serial.print(";\n*** configuration.motorSpeedSensorSampling = ");
-		Serial.print(configuration.motorSpeedSensorSampling);
-		Serial.print(";\n*** configuration.speedKalmanFilterR = ");
-		Serial.print(configuration.speedKalmanFilterR);
-		Serial.print(";\n*** configuration.motorLeftMinimumSpeed = ");
-		Serial.print(configuration.motorLeftMinimumSpeed);
-		Serial.print(";\n*** configuration.motorRightMinimumSpeed = ");
-		Serial.print(configuration.motorRightMinimumSpeed);
-		Serial.println("*** --------------------------------------------------");
-
-	          }
 
             else {
                   Serial.println("--------------------------------------------------");
                   Serial.print("Unknown command ");
                   Serial.println(arg);
                   }
-controlConfig();
+
 }
 
 

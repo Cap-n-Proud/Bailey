@@ -1,0 +1,39 @@
+{
+  "server": {
+    "name": "Bailey",
+    "serverPort": 54321,
+    "serBaud": 38400,
+    "serPort": "/dev/ttyACM0",
+    "version": "0.9",
+    "nodeLib": "/usr/local/lib/node_modules/",
+    "SNFolder": "/home/pi/Documents/Bailey/",
+    "installPath": "/home/pi/Bailey/"
+  },
+  "telemetry": {
+    "PathTelFile": "/home/pi/Bailey/server/log/",
+    "SEPARATOR": ","    
+  },
+  "hardware":{
+    "SERVO_1_GPIO": 4,
+    "SERVO_2_GPIO": 17,
+    "SERVO_1_MIN": "0.140",
+    "SERVO_1_MAX": "0.160",
+    "SERVO_2_MIN": "0.140",
+    "SERVO_2_MAX": "0.160"    
+  },
+  "ArduinoCfg":{
+    "SERVO_1_GPIO": 4,
+    "SERVO_2_GPIO": 17    
+  },
+  "camera": {
+    "TLimgWidth": 2592,
+    "TLimgHeight": 1944,
+    "TLInterval": 10000,
+    "SNimgWidth": 320,
+    "SNimgHeight": 240    
+  },
+  "MJPG": {
+    "MJPGPort": 9000    
+  }
+  
+}

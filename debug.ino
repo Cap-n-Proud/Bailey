@@ -14,11 +14,11 @@ void debugChart2() {
   //sendPlotData("motor2SteeringOffset", motor2SteeringOffset);
 }
 void sendPlotData(String seriesName, float data) {
-  Serial1.print("{");
-  Serial1.print(seriesName);
-  Serial1.print(",T,");
-  Serial1.print(data);
-  Serial1.println("}");
+  Serial.print("{");
+  Serial.print(seriesName);
+  Serial.print(",T,");
+  Serial.print(data);
+  Serial.println("}");
 }
 
 void debugLoopTime(){
@@ -95,18 +95,12 @@ void  debugSteerThrottle() {
  }
  
  void debugImu() {
- Serial.print("aX: ");
- printInt(imuValues[0], 4);
- Serial.print("\taY: ");
- printInt(imuValues[1], 4);
- Serial.print("\taZ: ");
- printInt(imuValues[2], 4);
- Serial.print("\tgX: ");
- printInt(imuValues[3], 4);
- Serial.print("\tgY: ");
- printInt(imuValues[4], 4);
- Serial.print("\tgZ: ");
- printInt(imuValues[5], 4);
+ Serial.print("\tyaw: ");
+ Serial.print(yaw);
+ Serial.print("\tpitch: ");
+ Serial.print(pitch);
+ Serial.print("\troll: ");
+ Serial.print(roll);
  }
  
  void debugMotorSpeedCalibration() {
