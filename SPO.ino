@@ -90,7 +90,8 @@ void SPO(){
   double c1Min = 1, c1Max = 1.8;
   double c2Min = 1, c2Max = 1.8;
   double curVal = 9999;
-
+  
+char cbuffer[10]; 
   double r1, r2; // randomizers
   double newVel, newPos, mv; 
   
@@ -159,7 +160,7 @@ void SPO(){
               +  "\nBest iteraction: " + (int)bestIteraction + SPACER + "best particle: " + (int)bestParticle 
               + "\n" + Note +("\n__________________________________"); 
 
-  if (debugSPO == true){
+  if (configuration.debugSPO == true){
      Serial.println(LastEventSPO);
   }    
 
@@ -202,7 +203,7 @@ void SPO(){
      LastEventSPO = "\nSoultion seems not to converge further... terminating" + LastEventSPO;
    }
    
-   if (debugSPO == true){Serial.println(LastEventSPO);}
+   if (configuration.debugSPO  == true){Serial.println(LastEventSPO);}
   
    AUTOTUNE = 0;
    SPOiteraction = 0;

@@ -1,21 +1,4 @@
-void initTimedActions() {
-// These take care of the timing of things
-TimedAction debugTimedAction = TimedAction(1000, debugEverything); //Print debug info
-TimedAction updateMotorStatusesTimedAction = TimedAction(configuration.motorSpeedSensorSampling, updateMotorSpeeds); //
-TimedAction updateIMUSensorsTimedAction = TimedAction(configuration.angleSensorSampling, updateIMUSensors);
 
-//TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
-
-//Reads serial for commands
-TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
-
-//Upload telemetry data
-TimedAction TelemetryTXTimedAction = TimedAction(250, TelemetryTX);
-
-//Swarn Particle Optimization
-TimedAction SwarnTimedAction = TimedAction(configuration.SPOConfigEval, SPO);
-
-}
 
 void controlConfig() {
   // init speed PID

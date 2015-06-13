@@ -1,10 +1,20 @@
+
 //------------------ Libraries ------------------
-#include <FreeSixIMU.h> // imu. www.varesano.net/projects/hardware/FreeIMU#library
+
+
+#include <FreeSixIMU.h> // http://bildr.org/2012/03/stable-orientation-digital-imu-6dof-arduino/
+                         // Modified version from imu. www.varesano.net/projects/hardware/FreeIMU#library
                         // Try also: https://github.com/TKJElectronics/Example-Sketch-for-IMU-including-Kalman-filter.git 
 //Do we need the following two? They might be included in the FreeSixIMU. Also check http://www.i2cdevlib.com/
 #include <FIMU_ADXL345.h> // imu
 #include <FIMU_ITG3200.h> // imu
+//#include <MPU60X0.h>
+//#include <MS561101BA.h>
+//#include <HMC58X3.h>
+//#include <DebugUtils.h>
+   
 #include <Wire.h> // for i2c
+#include <SPI.h>
 
 //#include <SoftwareSerial.h>
 #include <PID_v1.h> // https://github.com/br3ttb/Arduino-PID-Library.git
@@ -23,7 +33,7 @@
 #include <Encoder.h> // https://www.pjrc.com/teensy/td_libs_Encoder.html
 #include <L29x.h> // https://github.com/sebnil/L29x.git 
 
-#define SERIALCOMMAND_HARDWAREONLY 
+#define SERIALCOMMAND_HARDWAREONLY 1
 #include <SerialCommand.h> // https://github.com/scogswell/ArduinoSerialCommand
 
 //------------------ Constants ------------------ 
@@ -151,7 +161,7 @@ void setConfiguration(boolean force) {
     configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
         
     configuration.motorsON = 0;
-    configuration.debug = 0;
+    configuration.debug = 1;
   
     configuration.TriggerAngleAggressive = 3.50;
     configuration.calibratedZeroAngle = 1.8;
@@ -171,7 +181,7 @@ void setConfiguration(boolean force) {
     //Define a percentage around the known stable values
     configuration.SPOspread = 0.10;
     configuration.debugLevel = 0;
-    configuration.debugSampleRate = 50;
+    configuration.debugSampleRate = 500;
     //  configuration.speedPIDSetpointDebug = 1;
     configuration.speedPIDOutputDebug = 1;
     configuration.speedPIDInputDebug = 1;
@@ -189,7 +199,7 @@ void setConfiguration(boolean force) {
     delay(100);
   }
   else {
-    if (debug)
+    if (configuration.debug)
       Serial.println("Config found");
     loadConfig();
   }
@@ -206,7 +216,7 @@ String SEPARATOR = ","; //Used as separator for telemetry
 
 // Tell it where to store your config data in EEPROM
 boolean LCD_Output = false;
-int debug = 0;
+//int debug = 0;
 int particleNumber = 0;
 
 /* Encoders */
@@ -285,10 +295,9 @@ FreeSixIMU sixDOF = FreeSixIMU();
 String SPACER = " ";
 String Note = "";
 String LastEventSPO ="";
-//char cbuffer[10]; //CHECK IF NEEDED
 
 //Init code goes in the main body of the sketch
-const int numParticles = configuration.numParticles; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
+const int numParticles = 20;//configuration.numParticles; //Needs to be small as it gets the feedback from the real system for example 10 particles for 10 iteractions for 3 s will take 5 mis to finish. An idea can be to define a criteria to kill particles
 double maxInteractions = configuration.maxInteractions;
 double bestParticle = 0;
 double bestIteraction = 0;
@@ -332,6 +341,26 @@ space domain[2];
 
 double bestGlobalPosition[3];
 
+  //Init the timers
+  // These take care of the timing of things
+TimedAction debugTimedAction = TimedAction(configuration.debugSampleRate, debugEverything); //Print debug info
+TimedAction updateMotorStatusesTimedAction = TimedAction(configuration.motorSpeedSensorSampling, updateMotorSpeeds); //
+TimedAction updateIMUSensorsTimedAction = TimedAction(configuration.angleSensorSampling, updateIMUSensors);
+
+//TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
+
+//Reads serial for commands
+TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
+
+//Upload telemetry data
+TimedAction TelemetryTXTimedAction = TimedAction(250, TelemetryTX);
+
+//Swarn Particle Optimization
+TimedAction SwarnTimedAction = TimedAction(configuration.SPOConfigEval, SPO);
+
+
+
+
 //------------------ Setup ------------------ 
 void setup() { 
   //pinMode(configuration.speakerPin, OUTPUT);
@@ -357,8 +386,6 @@ void setup() {
 
   //Init control systems
   controlConfig();
-  //Init the timers
-  initTimedActions();
 
   // filters
   speedKalmanFilter.setState(0);
@@ -380,7 +407,7 @@ void setup() {
   }
 
 
-  if (debug==1)
+  if (configuration.debug==1)
     debugConfiguration();
 
   //saveConfig();
@@ -399,11 +426,14 @@ void setup() {
 
 void updateIMUSensors() {
   prev_pitch = pitch;
-  sixDOF.getYawPitchRoll(ypr);
+  //sixDOF.getYawPitchRoll(ypr);
+  sixDOF.getEuler(ypr);
   yaw = ypr[0];
   roll = ypr[1];
   pitch = ypr[2];
   pitchd1 = pitch - prev_pitch;  
+ 
+  
   //angleT = pitch; 
   // move angle to around equilibrium
   angleKalmanFilter.correct(pitch);
@@ -414,10 +444,6 @@ void updateIMUSensors() {
 void loop() { 
   StartL = millis();
   wdt_reset();
-  
-  if (LCD_Output){
-   LCDUpdateTimedAction.check();
-  }
 
   // update sensors and motors, also chek commands and send back telemetry
   updateIMUSensorsTimedAction.check();
@@ -471,7 +497,7 @@ void loop() {
 
 /* just debug functions. uncomment the debug information you want in debugEverything */
 void debugEverything() {
-  //debugImu();
+  debugImu();
   //debugAnglePID();
   //debugSpeedPID();
   //debugISE();
@@ -484,7 +510,7 @@ void debugEverything() {
   //debugChart2();
   //unrecognizedCMD();
   //debugLoopTime();
-  //Serial.println();
+  Serial.println();
 
 };
 
@@ -499,4 +525,6 @@ void LCDUpdate() {
   cursorSet(13,0);
   LCDSerial.print(pitch,1);
 }
+
+
 

@@ -9,47 +9,6 @@ void RemoteRead(){
   char *arg = SCmd.next();
  }
 
-/* 
-void RemoteUpload()
-{ //http://forum.arduino.cc/index.php?topic=85523.0
-  char *arg = SCmd.next();
-  String line = "";
-  if (!configuration.debug){      
-          balanceKalmanFilter.correct(dISTE);
-          char buffer[10];
-           StartL2= millis();
-           if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
-            line = "T" + SEPARATOR
-	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
-          + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
-          + dtostrf(roll, 10, 3, buffer) + SEPARATOR
-          + dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
-          + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
-          + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
-          + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + LoopT + SEPARATOR
-	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
-          + int(configuration.speedPIDKi* 10000) + SEPARATOR
-          + int(configuration.speedPIDKd * 10000) + SEPARATOR
-          + int(configuration.anglePIDConKp * 100) + SEPARATOR
-          + int(configuration.anglePIDConKi * 100) + SEPARATOR
-          + int(configuration.anglePIDConKd * 100) + SEPARATOR
-          + int(configuration.anglePIDAggKp * 100) + SEPARATOR
-          + int(configuration.anglePIDAggKi * 100) + SEPARATOR
-          + int(configuration.anglePIDAggKd * 100) + SEPARATOR
-          + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
-          + int(configuration.calibratedZeroAngle * 100) + SEPARATOR
-	  + LastEvent + SEPARATOR
-          + configuration.FirmwareVersion;
-          Serial.println(line);
-          //Serial.println(millis()-StartL2);
-  }
-
-}
-
- */
-
 void TelemetryTX()
 { // for help on dtostrf http://forum.arduino.cc/index.php?topic=85523.0
   char *arg = SCmd.next();
@@ -57,18 +16,17 @@ void TelemetryTX()
   if (!configuration.debug){      
           //balanceKalmanFilter.correct(dISTE);
           char buffer[10];
-           if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
-            line = "T" + SEPARATOR
+           //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
+line = "T" + SEPARATOR
 	  + dtostrf(yaw, 10, 3, buffer) + SEPARATOR
           + dtostrf(pitch, 10, 3, buffer) + SEPARATOR
           + dtostrf(roll, 10, 3, buffer) + SEPARATOR
 	  + dtostrf(pitchd1, 10, 3, buffer) + SEPARATOR
-          //+ dtostrf((balanceKalmanFilter.getState()*(abs(leftMotorSpeed)+abs(rightMotorSpeed))/2), 10, 3, buffer) + SEPARATOR
           + dtostrf(dISTE, 10, 3, buffer) + SEPARATOR
           + dtostrf(anglePIDOutput, 10, 3, buffer)  + SEPARATOR
           + dtostrf(leftMotorSpeed, 10, 3, buffer) + SEPARATOR
           + dtostrf(rightMotorSpeed, 10, 3, buffer) + SEPARATOR
-          + LoopT + SEPARATOR	
+          + LoopT + SEPARATOR
 	  + LastEvent;
 	  Serial.println(line);
   }
@@ -81,8 +39,8 @@ void PIDParamTX()
   char *arg = SCmd.next();
   String line = "";
   if (!configuration.debug){
-    line = "PID" + SEPARATOR
-	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
+    line = "PID" + SEPARATOR;
+/*	  + int(configuration.speedPIDKp * 10000)  + SEPARATOR
           + int(configuration.speedPIDKi* 10000) + SEPARATOR
           + int(configuration.speedPIDKd * 10000) + SEPARATOR
           + int(configuration.anglePIDConKp * 100) + SEPARATOR
@@ -92,8 +50,7 @@ void PIDParamTX()
           + int(configuration.anglePIDAggKi * 100) + SEPARATOR
           + int(configuration.anglePIDAggKd * 100) + SEPARATOR
           + int(configuration.TriggerAngleAggressive * 100) + SEPARATOR
-          + int(configuration.calibratedZeroAngle * 100); 
-          
+          + int(configuration.calibratedZeroAngle * 100);        */   
 	  Serial.println(line);
   }
 
@@ -134,7 +91,7 @@ void RemoteInit()
 		"LastEvent";
 	    Serial.println(headers);
   delay(100);
-  String headers = "PIDH" + SEPARATOR +		
+  headers = "PIDH" + SEPARATOR +		
 		"speedPIDKp" + SEPARATOR +
 		"speedPIDKi" + SEPARATOR +
 		"speedPIDKd" + SEPARATOR +
@@ -148,7 +105,7 @@ void RemoteInit()
 		"calibratedZeroAngle";		
 	    Serial.println(headers);
     delay(100);
-    String headers = 	"SYSH" + SEPARATOR +		 
+    headers = 	"SYSH" + SEPARATOR +		 
                 "FirmwareVersion";
 	    Serial.println(headers);
 }
@@ -327,6 +284,7 @@ void setCommand()
 		configuration.debugSampleRate = atoi(value);
 		
 		//------------------ Comm Functions ------------------ 
+                //SCMD PIDParamTX
                 else if (String("PIDParamTX").equals(arg))
 		PIDParamTX();
 		else if (String("RemoteInit").equals(arg))
@@ -393,9 +351,6 @@ void setCommand()
                   Serial.print("Unknown command ");
                   Serial.println(arg);
                   }
-
-
-
 controlConfig();
 }
 
