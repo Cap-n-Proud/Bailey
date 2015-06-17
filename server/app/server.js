@@ -138,7 +138,7 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 
   //Set commands goes to Arduino directly
   socket.on('SCMD', function(CMD){
-    console.log(CMD);
+    //console.log(CMD);
     serialPort.write('SCMD ' + CMD + '\n');
     //Commands are echoed back to the remote
     socket.emit('CMD', 'SCMD ' + CMD);    
@@ -287,7 +287,7 @@ serialPort.on('data', function(data, socket) {
 	  for (var i in PID) {
 	    PID[i] = tokenData[j];
 	   
-            console.log(i + ' ' + PID[i]);
+            //console.log(i + ' ' + PID[i]);
 	 
             j++;
 	     }
@@ -303,7 +303,7 @@ serialPort.on('data', function(data, socket) {
 	  var arrayLength = PIDHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    PID[PIDHeader[i]] = "N/A";
-	    console.log(PIDHeader[i]);
+	    //console.log(PIDHeader[i]);
 	  }
 	     setTimeout(function () {
                 serialPort.write('READ PIDParamTX\n\r');
