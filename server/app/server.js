@@ -107,8 +107,7 @@ io.on('connection', function(socket){
 //Init the heades for telemtry data
    serialPort.write('READ RemoteInit\n\r');
     //Trasmit system and PID parameters
-   serialPort.write('READ PIDParamTX\n\r');
-   serialPort.write('READ SYSParamTX\n\r');
+   
     socket.emit('serverADDR', serverADDR);
     socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, PID);
     console.log('New socket.io connection - id: %s', socket.id);
@@ -119,7 +118,8 @@ io.on('connection', function(socket){
   if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal']);
   //console.log(Telemetry['yaw'] + Telemetry['Event']);
   }, 250);
-  
+//serialPort.write('READ PIDInit\n\r');
+     
   setInterval(function(){
 
   var usage = "N/A";
@@ -220,7 +220,7 @@ serialPort.on('data', function(data, socket) {
         //var Telemetry, PID, ArduSys = {};
         //console.log(data);
 	//"T" means we are receiving Telemetry data
-        console.log(data);	
+        //console.log(data);	
         if (data.indexOf('T') !== -1)
 	{
 	  var tokenData = data.split(SEPARATOR);
@@ -257,6 +257,11 @@ serialPort.on('data', function(data, socket) {
 	    ArduSys[ArduSysHeader[i]] = "N/A";
 	    //console.log(TelemetryHeader[i]);
 	}
+            setTimeout(function () {
+         	   serialPort.write('READ SYSParamTX\n\r');
+        
+            }, 100)
+	 
         }
 	
 	if (data.indexOf('SYS') !== -1)
@@ -277,10 +282,12 @@ serialPort.on('data', function(data, socket) {
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
-	  
-	  for (var i in Telemetry) {
+	 //  console.log('------------- PID settings -------------');
+	 
+	  for (var i in PID) {
 	    PID[i] = tokenData[j];
-	    console.log(i + ' ' + PID[i]);
+	   
+            console.log(i + ' ' + PID[i]);
 	 
             j++;
 	     }
@@ -289,14 +296,24 @@ serialPort.on('data', function(data, socket) {
 	}
 	
         if (data.indexOf('PIDH') !== -1)
-	{
+	{  // console.log(data);
+            //console.log('------------- PID Header -------------');
+	
 	   PIDHeader = data.split(SEPARATOR);
 	  var arrayLength = PIDHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    PID[PIDHeader[i]] = "N/A";
-	    //console.log(TelemetryHeader[i]);
+	    console.log(PIDHeader[i]);
 	  }
-	  eventEmitter.emit('log', data);
+	     setTimeout(function () {
+                serialPort.write('READ PIDParamTX\n\r');
+                 
+            }, 100)
+	  
+	     
+          eventEmitter.emit('log', data);
+          
+         
 	}
 	
 
