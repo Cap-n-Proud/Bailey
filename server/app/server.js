@@ -138,16 +138,16 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 
   //Set commands goes to Arduino directly
   socket.on('SCMD', function(CMD){
-    //console.log(CMD);
-    serialPort.write('SCMD ' + CMD + '\n');
+    console.log(CMD);
+    serialPort.write('SCMD ' + CMD + '\n\r');
     //Commands are echoed back to the remote
     socket.emit('CMD', 'SCMD ' + CMD);    
       });
   
     socket.on('move', function(dX, dY){
 	//console.log('event: ', dX, dY);
-	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n');
-	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');	
+	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n\r');
+	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n\r');	
 	});
     
   //Server Commands

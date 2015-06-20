@@ -158,7 +158,7 @@ void setConfiguration(boolean force) {
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
     configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
-    configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    configuration.Maxthrottle = 1.5; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
         
     configuration.motorsON = 0;
     configuration.debug = 0;
@@ -181,7 +181,7 @@ void setConfiguration(boolean force) {
     //Define a percentage around the known stable values
     configuration.SPOspread = 0.10;
     configuration.debugLevel = 0;
-    configuration.debugSampleRate = 500;
+    configuration.debugSampleRate = 1000;
     //  configuration.speedPIDSetpointDebug = 1;
     configuration.speedPIDOutputDebug = 1;
     configuration.speedPIDInputDebug = 1;
@@ -209,6 +209,9 @@ void setConfiguration(boolean force) {
 //------------------ Definitions ------------------ 
 L29x motorRight(configuration.MotorLeftENABLEA , configuration.MotorLeftIN1, configuration.MotorLeftIN2); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
 L29x motorLeft(configuration.MotorRightENABLEA , configuration.MotorRightIN1 , configuration.MotorRightIN2);
+
+//L29x motorRight(8, 9, 10); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
+//L29x motorLeft(11, 12, 13);
 
 //Button motorBtn(13, false, false, 20);
 const uint8_t LED_PIN = 13;
@@ -342,6 +345,7 @@ space domain[2];
 double bestGlobalPosition[3];
 
   //Init the timers
+
   // These take care of the timing of things
 TimedAction debugTimedAction = TimedAction(configuration.debugSampleRate, debugEverything); //Print debug info
 TimedAction updateMotorStatusesTimedAction = TimedAction(configuration.motorSpeedSensorSampling, updateMotorSpeeds); //
@@ -377,7 +381,7 @@ void setup() {
   //Init control systems
   controlConfig();
 
-  // filters
+  // Filters
   speedKalmanFilter.setState(0);
   balanceKalmanFilter.setState(0);
   //float coefficients[] = {
@@ -411,18 +415,19 @@ void setup() {
 }
 
 void updateIMUSensors() {
+  double angleT;
   prev_pitch = pitch;
-  //sixDOF.getYawPitchRoll(ypr);
-  sixDOF.getEuler(ypr);
+  sixDOF.getYawPitchRoll(ypr);
+  //sixDOF.getEuler(ypr);
   yaw = ypr[0];
   roll = ypr[1];
   pitch = ypr[2];
   pitchd1 = pitch - prev_pitch;  
  
   
-  //angleT = pitch; 
+  angleT = pitch; 
   // move angle to around equilibrium
-  angleKalmanFilter.correct(pitch);
+  angleKalmanFilter.correct(angleT);
   anglePIDInput = angleKalmanFilter.getState();// Dont think it is needed here "- configuration.calibratedZeroAngle;"
 }
 
@@ -462,9 +467,11 @@ void loop() {
 
     anglePID.Compute();
     //Filter the angle with Kalman
-    angleKalmanFilter.correct(anglePIDOutput);
-    anglePIDOutput = angleKalmanFilter.getState();
+    //angleKalmanFilter.correct(anglePIDOutput);
+    //anglePIDOutput = angleKalmanFilter.getState();
+   
     if (configuration.motorsON==1){
+      //Serial.println("input sent to motors");
       motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
       motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
     }
@@ -484,18 +491,18 @@ void loop() {
 /* just debug functions. uncomment the debug information you want in debugEverything */
 void debugEverything() {
   debugImu();
-  //debugAnglePID();
-  //debugSpeedPID();
+  debugAnglePID();
+  debugSpeedPID();
   //debugISE();
   //debugAnglePIDCoeff();
   //debugSpeedPIDCoeff();
   //debugEncoders();
-  //debugMotorSpeeds();
+  debugMotorSpeeds();
   //debugMotorCalibrations();
   //debugMotorSpeedCalibration();
   //debugChart2();
   //unrecognizedCMD();
-  //debugLoopTime();
+  debugLoopTime();
   Serial.println();
 
 };
