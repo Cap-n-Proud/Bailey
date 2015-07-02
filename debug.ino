@@ -110,10 +110,6 @@ void  debugSteerThrottle() {
  }
  
   
- void unrecognizedCMD() {
- Serial.print("\t");
- Serial.print("Command unknown");
- }
  
  void printInt(int number, byte width) {
  int currentMax = 10;

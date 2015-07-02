@@ -1,5 +1,6 @@
 // sudo udevadm control --reload-rules
 // to refresh the port allocation
+// cd /home/pi/Bailey/server/app
 
 var nconf = require('/usr/local/lib/node_modules/nconf');
 nconf.argv()
@@ -52,7 +53,9 @@ var prevTel="";
 var prevPitch="";
 var THReceived=0;
 
-var TelemetryHeader, PIDHeader, ArduSysHeader;
+var TelemetryHeader;
+var PIDHeader
+var ArduSysHeader;
 var Telemetry ={}
 var PID ={}
 var ArduSys = {};
@@ -138,23 +141,23 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 
   //Set commands goes to Arduino directly
   socket.on('SCMD', function(CMD){
-    console.log(CMD);
+    //console.log(CMD);
     serialPort.write('SCMD ' + CMD + '\n\r');
     //Commands are echoed back to the remote
-    socket.emit('CMD', 'SCMD ' + CMD);    
+    //socket.emit('CMD', 'SCMD ' + CMD);    
       });
   
     socket.on('move', function(dX, dY){
 	//console.log('event: ', dX, dY);
-	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n\r');
-	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n\r');	
+	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n');
+	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');	
 	});
     
   //Server Commands
   socket.on('SerCMD', function(CMD){  
     socket.emit('CMD', CMD);    
     if ( CMD == "LOG_ON" ) {
-      console.log("Log started");
+      //console.log("Log started");
       if (TelemetryFN == "") {
 	  var myDate = new Date();
 	  TelemetryFN = 'Telemetry_' + myDate.getFullYear() + myDate.getMonth() + myDate.getDate() +  myDate.getHours() +  myDate.getMinutes() + myDate.getSeconds()+ '.csv';
@@ -200,10 +203,16 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   socket.on('disconnect', function(){
     console.log('Disconnected id: %s', socket.id);
 
-  });  
+  }); 
+  
+    eventEmitter.on('CMDecho', function(data){
+        socket.emit('CMD', data);
+
+  }); 
  
  
 });
+
 io.on('disconnect', function () {
         console.log('A socket with sessionID ' + hs.sessionID 
             + ' disconnected!');
@@ -220,7 +229,13 @@ serialPort.on('data', function(data, socket) {
         //var Telemetry, PID, ArduSys = {};
         //console.log(data);
 	//"T" means we are receiving Telemetry data
-        //console.log(data);	
+        //console.log(data);
+    
+        if (data.indexOf('SCMD') !== -1)
+	{
+          eventEmitter.emit('CMDecho', data);  
+        }
+            
         if (data.indexOf('T') !== -1)
 	{
 	  var tokenData = data.split(SEPARATOR);
@@ -282,36 +297,35 @@ serialPort.on('data', function(data, socket) {
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
-	 //  console.log('------------- PID settings -------------');
-	 
+          //console.log(data);
+	  //console.log('------------- PID settings -------------');
 	  for (var i in PID) {
 	    PID[i] = tokenData[j];
-	   
             //console.log(i + ' ' + PID[i]);
-	 
-            j++;
+	    j++;
 	     }
 	  j = 0;
-	  eventEmitter.emit('log', data);
+	  //eventEmitter.emit('log', data);
 	}
 	
         if (data.indexOf('PIDH') !== -1)
-	{  // console.log(data);
+	{   //console.log(data);
             //console.log('------------- PID Header -------------');
 	
 	   PIDHeader = data.split(SEPARATOR);
+           
 	  var arrayLength = PIDHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    PID[PIDHeader[i]] = "N/A";
-	    //console.log(PIDHeader[i]);
+	    //console.log(PIDHeader[i]);// + ' ' + PID[PIDHeader[i]]);
 	  }
 	     setTimeout(function () {
                 serialPort.write('READ PIDParamTX\n\r');
                  
-            }, 100)
+            }, 100);
 	  
 	     
-          eventEmitter.emit('log', data);
+          //eventEmitter.emit('log', data);
           
          
 	}

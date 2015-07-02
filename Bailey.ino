@@ -34,7 +34,7 @@
 #include <L29x.h> // https://github.com/sebnil/L29x.git 
 
 #define SERIALCOMMAND_HARDWAREONLY 1
-#include <SerialCommand.h> // https://github.com/scogswell/ArduinoSerialCommand
+#include <SerialCommand.h> // https://github.com/kroimon/Arduino-SerialCommand.git
 
 //------------------ Constants ------------------ 
 #define TO_RAD(x) (x * 0.01745329252)  // *pi/180
@@ -96,6 +96,7 @@ struct Configuration {
   boolean debugSPO;
   double SPOspread = 0.10;
   
+  int commandDelay;
   //int speakerPin;
   
   boolean debug;
@@ -163,7 +164,7 @@ void setConfiguration(boolean force) {
     configuration.motorsON = 0;
     configuration.debug = 0;
   
-    configuration.TriggerAngleAggressive = 3.50;
+    configuration.TriggerAngleAggressive = 2.50;
     configuration.calibratedZeroAngle = 1.8;
     
     configuration.anglePIDSampling = 10;
@@ -180,6 +181,8 @@ void setConfiguration(boolean force) {
     configuration.debugSPO = false;
     //Define a percentage around the known stable values
     configuration.SPOspread = 0.10;
+    
+    configuration.commandDelay = 5;
     configuration.debugLevel = 0;
     configuration.debugSampleRate = 1000;
     //  configuration.speedPIDSetpointDebug = 1;
@@ -207,11 +210,11 @@ void setConfiguration(boolean force) {
 
 
 //------------------ Definitions ------------------ 
-L29x motorRight(configuration.MotorLeftENABLEA , configuration.MotorLeftIN1, configuration.MotorLeftIN2); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
-L29x motorLeft(configuration.MotorRightENABLEA , configuration.MotorRightIN1 , configuration.MotorRightIN2);
+//L29x motorRight((int)configuration.MotorLeftENABLEA , (int)configuration.MotorLeftIN1, (int)configuration.MotorLeftIN2); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
+//L29x motorLeft((int)configuration.MotorRightENABLEA , (int)configuration.MotorRightIN1 , (int)configuration.MotorRightIN2);
 
-//L29x motorRight(8, 9, 10); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
-//L29x motorLeft(11, 12, 13);
+L29x motorRight(8, 9, 10); // pin8 PWM=EnableA, pin 9 is IN1, pin 10 is IN2
+L29x motorLeft(11, 12, 13);
 
 //Button motorBtn(13, false, false, 20);
 const uint8_t LED_PIN = 13;
@@ -410,7 +413,9 @@ void setup() {
   
   // Setup callbacks for SerialCommand commands 
   SCmd.addCommand("SCMD", setCommand);       
-  SCmd.addCommand("READ", printCommand);     
+  SCmd.addCommand("SCMD2", setCommand2);       
+  SCmd.addCommand("READ", printCommand); 
+  //SCmd.addDefaultHandler(unrecognizedCMD);  // Handler for command that isn't matched  
   //play(notes, beats);
 }
 

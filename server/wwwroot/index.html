@@ -205,56 +205,56 @@
 </div>
     <ul class="small-block-grid-9">
                 <li><output class="PIDSliderLabel" id=
-                "APIDConKpVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDConKp" max="1500" min="0" oninput=
-                "APIDConKpVal.value=value" step="1" type="range"></li>
+                "anglePIDConKpVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDConKp" max="1500" min="0" oninput=
+                "anglePIDConKpVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "APIDConKiVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDConKi" max="2000" min="0" oninput=
-                "APIDConKiVal.value=value" step="1" type="range"></li>
+                "anglePIDConKiVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDConKi" max="2000" min="0" oninput=
+                "anglePIDConKiVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "APIDConKdVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDConKd" max="200" min="0" oninput=
-                "APIDConKdVal.value=value" step="1" type="range"></li>
+                "anglePIDConKdVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDConKd" max="200" min="0" oninput=
+                "anglePIDConKdVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "APIDAggKpVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDAggKp" max="5000" min="0" oninput=
-                "APIDAggKpVal.value=value" step="1" type="range"></li>
+                "anglePIDAggKpVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDAggKp" max="5000" min="0" oninput=
+                "anglePIDAggKpVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "APIDAggKiVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDAggKi" max="5000" min="0" oninput=
-                "APIDAggKiVal.value=value" step="1" type="range"></li>
+                "anglePIDAggKiVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDAggKi" max="5000" min="0" oninput=
+                "anglePIDAggKiVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "APIDAggKdVal"></output>&nbsp; <input class="PIDControlSlider"
-                id="APIDAggKd" max="1500" min="0" oninput=
-                "APIDAggKdVal.value=value" step="1" type="range"></li>
+                "anglePIDAggKdVal"></output>&nbsp; <input class="PIDControlSlider"
+                id="anglePIDAggKd" max="1500" min="0" oninput=
+                "anglePIDAggKdVal.value=value" step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "SPIDKpVal"></output>&nbsp; <input class="PIDControlSlider" id=
-                "SPIDKp" max="7000" min="3000" oninput="SPIDKpVal.value=value"
+                "speedPIDKpVal"></output>&nbsp; <input class="PIDControlSlider" id=
+                "speedPIDKp" max="7000" min="3000" oninput="speedPIDKpVal.value=value"
                 step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "SPIDKiVal"></output>&nbsp; <input class="PIDControlSlider" id=
-                "SPIDKi" max="3000" min="0" oninput="SPIDKiVal.value=value"
+                "speedPIDKiVal"></output>&nbsp; <input class="PIDControlSlider" id=
+                "speedPIDKi" max="3000" min="0" oninput="speedPIDKiVal.value=value"
                 step="1" type="range"></li>
 
 
                 <li><output class="PIDSliderLabel" id=
-                "SPIDKdVal"></output>&nbsp; <input class="PIDControlSlider" id=
-                "SPIDKd" max="1500" min="0" oninput="SPIDKdVal.value=value"
+                "speedPIDKdVal"></output>&nbsp; <input class="PIDControlSlider" id=
+                "speedPIDKd" max="1500" min="0" oninput="speedPIDKdVal.value=value"
                 step="1" type="range" value="80"></li>
 
 
@@ -491,71 +491,30 @@ var socket = io();
     document.getElementById("CPU").innerHTML = CPU; 
     });
 
-    //socket.on('connected', function(V, ArduRead){
+    //socket.on('connected', function(V, PID){
     //   started=0;
-    //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + ArduRead['FirmwareVersion'];
+    //   document.getElementById("Info").innerHTML = 'Server: ' + V + ' Firmware: ' + PID['FirmwareVersion'];
       //Set defalut values for the PID sliders
  
     //     });
 
-   
-    function setSliders(ArduRead){
-         //Bulky, try to go with get elemnts by class and for...
-    document.getElementById('APIDConKp').value = parseInt(ArduRead['anglePIDConKp']);
-    document.getElementById('APIDConKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
-    document.getElementById('APIDConKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKp']);
-    document.getElementById('APIDConKpVal').value = parseInt(ArduRead['anglePIDConKp']);
-
-    document.getElementById('APIDConKi').value = parseInt(ArduRead['anglePIDConKi']);
-    document.getElementById('APIDConKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
-    document.getElementById('APIDConKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKi']);
-    document.getElementById('APIDConKiVal').value = parseInt(ArduRead['anglePIDConKi']);
-
-    document.getElementById('APIDConKd').value = parseInt(ArduRead['anglePIDConKd']);
-    document.getElementById('APIDConKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
-    document.getElementById('APIDConKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDConKd']);
-    document.getElementById('APIDConKdVal').value = parseInt(ArduRead['anglePIDConKd']);
-
-    document.getElementById('APIDAggKp').value = parseInt(ArduRead['anglePIDAggKp']);    
-    document.getElementById('APIDAggKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
-    document.getElementById('APIDAggKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKp']);    
-    document.getElementById('APIDAggKpVal').value = parseInt(ArduRead['anglePIDAggKp']);    
-
-    document.getElementById('APIDAggKi').value = parseInt(ArduRead['anglePIDAggKi']);
-    document.getElementById('APIDAggKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
-    document.getElementById('APIDAggKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKi']);
-    document.getElementById('APIDAggKiVal').value = parseInt(ArduRead['anglePIDAggKi']);
-
-    document.getElementById('APIDAggKd').value = parseInt(ArduRead['anglePIDAggKd']);
-    document.getElementById('APIDAggKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
-    document.getElementById('APIDAggKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['anglePIDAggKd']);
-    document.getElementById('APIDAggKdVal').value = parseInt(ArduRead['anglePIDAggKd']);
-
-    document.getElementById('SPIDKp').value = parseInt(ArduRead['speedPIDKp']);     
-    document.getElementById('SPIDKp').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
-    document.getElementById('SPIDKp').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKp']);     
-    document.getElementById('SPIDKpVal').value = parseInt(ArduRead['speedPIDKp']);    
-
-    document.getElementById('SPIDKi').value = parseInt(ArduRead['speedPIDKi']);
-    document.getElementById('SPIDKi').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
-    document.getElementById('SPIDKi').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKi']);
-    document.getElementById('SPIDKiVal').value = parseInt(ArduRead['speedPIDKi']);
-
-    //Check how it get multplied in Arduino, does not increment enought
-    document.getElementById('SPIDKd').value = parseInt(ArduRead['speedPIDKd']);
-    document.getElementById('SPIDKd').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
-    document.getElementById('SPIDKd').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['speedPIDKd']);
-    document.getElementById('SPIDKdVal').value = parseInt(ArduRead['speedPIDKd']);
-
-    document.getElementById('calibratedZeroAngle').value = parseInt(ArduRead['calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead['calibratedZeroAngle']);
-    document.getElementById('calibratedZeroAngleVal').value = parseInt(ArduRead['calibratedZeroAngle']); 
-  
+    
+    function setSliders(PID){
+         var PIDSlider = document.getElementsByClassName("PIDControlSlider");
+      var arrayLength = PIDSlider.length;
+              
+      for (var i = 0; i < arrayLength; i++) {
+      //console.log(PIDSlider[i].id + ' ' + parseInt(PID[PIDSlider[i].id]));
+          document.getElementById(PIDSlider[i].id).value = parseInt(PID[PIDSlider[i].id]);
+          document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(PID[PIDSlider[i].id]);
+          document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(PID[PIDSlider[i].id]);
+          document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(PID[PIDSlider[i].id]);
+      }
     
     }
-    
-    socket.on('connected', function(info, serverAddress, sPort, videoPort, ArduRead){
+
+   
+    socket.on('connected', function(info, serverAddress, sPort, videoPort, PID){
     started=0;
    
    serverADDR = serverAddress.toString();
@@ -567,7 +526,7 @@ var socket = io();
    document.getElementById("Info").innerHTML = info;
    //document.getElementById("CMD").innerHTML = 'http://' + serverADDR + ':' + serverPort + '/vj';
    
-    setSliders(ArduRead);
+    setSliders(PID);
    // document.getElementById("Info").innerHTML = server;
    
 	
@@ -625,19 +584,6 @@ function toggleTelemetryGPH(element){
     }
     }
 
-//This is better than repeating the code for every slider, need to find a way of making it work...
-    function setSliders2(ArduRead){
-         var PIDSlider = document.getElementsByClassName("PIDControlSlider");
-      var arrayLength = SliderID.length;
-              
-      for (var i = 0; i < arrayLength; i++) {
-          document.getElementById(PIDSlider[i].id).value = parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id).max = (1 + PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(ArduRead[PIDSlider[i].id]);
-          document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(ArduRead[PIDSlider[i].id]);
-      }
-    
-    }
     </script> 
 
       <script src="js/foundation/js/vendor/jquery.js"></script>
