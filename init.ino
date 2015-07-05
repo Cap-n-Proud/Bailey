@@ -9,7 +9,7 @@ void controlConfig() {
   speedPID.SetTunings(configuration.speedPIDKp, configuration.speedPIDKi, configuration.speedPIDKd);
 
   //init angle PID
-  anglePIDSetpoint = configuration.calibratedZeroAngle; //Originally was zero 0;
+  anglePIDSetpoint = 0;
   anglePID.SetOutputLimits(configuration.anglePIDOutputLowerLimit, configuration.anglePIDOutputHigherLimit);
   anglePID.SetMode(AUTOMATIC);
   anglePID.SetSampleTime(configuration.anglePIDSampling);

@@ -142,7 +142,7 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   //Set commands goes to Arduino directly
   socket.on('SCMD', function(CMD){
     //console.log(CMD);
-    serialPort.write('SCMD ' + CMD + '\n\r');
+    serialPort.write('SCMD ' + CMD + '\n');
     //Commands are echoed back to the remote
     //socket.emit('CMD', 'SCMD ' + CMD);    
       });
@@ -210,6 +210,10 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 
   }); 
  
+    eventEmitter.on('serialData', function(data){
+        socket.emit('serialData', data);
+
+  }); 
  
 });
 
@@ -230,7 +234,10 @@ serialPort.on('data', function(data, socket) {
         //console.log(data);
 	//"T" means we are receiving Telemetry data
         //console.log(data);
-    
+        
+        //this emits raw data from Arduino for debug purposes
+        eventEmitter.emit('serialData', data);
+        
         if (data.indexOf('SCMD') !== -1)
 	{
           eventEmitter.emit('CMDecho', data);  

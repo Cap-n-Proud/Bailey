@@ -42,6 +42,11 @@ app.get('/livedata', function(req, res) {
   res.end;
 });
 
+app.get('/serialMonitor', function(req, res) {
+  res.sendFile(installPath + 'server/wwwroot/serialMonitor.html');
+  res.end;
+});
+
 app.get('/test', function(req, res) {
   res.sendFile('/home/pi/Bailey/server/wwwroot/test.html');
   res.end;

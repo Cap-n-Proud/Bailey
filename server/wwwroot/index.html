@@ -300,6 +300,13 @@
   <li class="tab-title" role="presentational" ><a href="#panel2-2" role="tab" tabindex="0"aria-selected="false" controls="panel2-2">PID</a></li>
   <li class="tab-title" role="presentational"><a href="#panel2-3" role="tab" tabindex="0" aria-selected="false" controls="panel2-3">OPT</a></li>
 <!--  <li class="tab-title" role="presentational" ><a href="#panel2-4" role="tab" tabindex="0" aria-selected="false" controls="panel2-4">Tab 4</a></li>-->
+     
+     <li>&nbsp;</li>
+     <li class="tab-title"> 
+                      <i class="fa fa-bolt  fa-2x"></i>
+                      <div class="switch round small right"><input id="Motors" type="checkbox" onclick="MotorF(this)"><label for="Motors"></label></div>
+     </li>
+     
 </ul>
         <!--Closes the row-->
     </div>
@@ -386,7 +393,7 @@ $(document).foundation();
     
 var socket = io();
     //Slide ranges are automatically calculated as percentage of the default config from Arduino
-    var PID_SLIDE_RANGE = 0.50; 
+    var PID_SLIDE_RANGE = 1.50; 
 
     window.onload=function()
     {
@@ -403,7 +410,20 @@ var socket = io();
     }
     }
 
-  	
+   {
+    var classname = document.getElementsByClassName("AngleControlSlider");
+
+    var myFunction = function() {
+        var attribute = this.getAttribute("id");
+        socket.emit('SCMD', this.getAttribute("id")+' '+ this.value);
+        //alert(this.getAttribute("id")+' '+ this.value);
+    };
+
+    for(var i=0;i<classname.length;i++){
+        classname[i].addEventListener('change', myFunction, false);
+    }
+    }
+    
 	
     function MotorF(element){
 
@@ -510,6 +530,12 @@ var socket = io();
           document.getElementById(PIDSlider[i].id).min = (1 - PID_SLIDE_RANGE)*parseInt(PID[PIDSlider[i].id]);
           document.getElementById(PIDSlider[i].id + 'Val').value = parseInt(PID[PIDSlider[i].id]);
       }
+      
+        //console.log(' ' + parseInt(PID['calibratedZeroAngle']));
+          document.getElementById('calibratedZeroAngle').value = parseInt(PID['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').max = (1 + PID_SLIDE_RANGE)*parseInt(PID['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngle').min = (1 - PID_SLIDE_RANGE)*parseInt(PID['calibratedZeroAngle']);
+    document.getElementById('calibratedZeroAngleVal').value = parseInt(PID['calibratedZeroAngle']);
     
     }
 

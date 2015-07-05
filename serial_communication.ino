@@ -232,7 +232,7 @@ void setCommand()
   if (value != NULL)
   {
     // parameters
-    if (String("SPIDKp").equals(arg)) {
+    if (String("speedPIDKp").equals(arg)) {
       configuration.speedPIDKp = atof(value) / 10000;
       delay(5);
       controlConfig();
@@ -242,13 +242,13 @@ void setCommand()
       Serial.print("this is a test arg ");
       Serial.println(value);
     }
-    else if (String("SPIDKi").equals(arg)) {
+    else if (String("speedPIDKi").equals(arg)) {
       configuration.speedPIDKi = atof(value) / 10000;
       delay(5);
       controlConfig();
       PIDParamTX();
     }
-    else if (String("SPIDKd").equals(arg)) {
+    else if (String("speedPIDKd").equals(arg)) {
       configuration.speedPIDKd = atof(value) / 10000;
       delay(5);
       controlConfig();
@@ -266,25 +266,25 @@ void setCommand()
       controlConfig();
       PIDParamTX();
     }
-    else if (String("APIDAggKp").equals(arg)) {
+    else if (String("anglePIDAggKp").equals(arg)) {
       configuration.anglePIDAggKp = atof(value) / 100;
       delay(5);
       controlConfig();
       PIDParamTX();
     }
-    else if (String("APIDAggKi").equals(arg)) {
+    else if (String("anglePIDAggKi").equals(arg)) {
       configuration.anglePIDAggKi = atof(value) / 100;
       delay(5);
       controlConfig();
       PIDParamTX();
     }
-    else if (String("APIDAggKd").equals(arg)) {
+    else if (String("anglePIDAggKd").equals(arg)) {
       configuration.anglePIDAggKd = atof(value) / 100;
       delay(5);
       controlConfig();
       PIDParamTX();
     }
-    else if (String("APIDConKp").equals(arg)) {
+    else if (String("anglePIDConKp").equals(arg)) {
       configuration.anglePIDConKp = atof(value) / 100;
       delay(5);
       controlConfig();
@@ -292,13 +292,13 @@ void setCommand()
       // Serial.println("-------------------- APIDConKp ------------------------------");
 
     }
-    else if (String("APIDConKi").equals(arg)) {
+    else if (String("anglePIDConKi").equals(arg)) {
       configuration.anglePIDConKi = atof(value) / 100;
       delay(5);
       controlConfig();
       PIDParamTX();
     }
-    else if (String("APIDConKd").equals(arg)) {
+    else if (String("anglePIDConKd").equals(arg)) {
       configuration.anglePIDConKd = atof(value) / 100;
       delay(5);
       controlConfig();
