@@ -6,11 +6,11 @@
     "serPort": "/dev/ttyACM0",
     "version": "0.9",
     "nodeLib": "/usr/local/lib/node_modules/",
-    "SNFolder": "/home/pi/Documents/Bailey/",
+    "SNFolder": "/home/pi/Documents/SN/",
     "installPath": "/home/pi/Bailey/"
   },
   "telemetry": {
-    "PathTelFile": "/home/pi/Bailey/server/log/",
+    "PathTelFile": "/home/pi/Documents/log/",
     "SEPARATOR": ","    
   },
   "hardware":{

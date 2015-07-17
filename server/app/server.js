@@ -5,7 +5,7 @@
 var nconf = require('/usr/local/lib/node_modules/nconf');
 nconf.argv()
        .env()
-       .file({ file: '/home/pi/Bailey/server/app/config.json' });
+       .file({ file: __dirname + '/config.json' });
 
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
@@ -31,7 +31,7 @@ var version = nconf.get('server:version');
 var videoFeedPort = nconf.get('MJPG:MJPGPort');
 
 // include custom functions ======================================================================
-//var systemModules = require(installPath + 'app/systemModules');
+var systemModules = require(installPath + 'server/app/systemModules');
 var functions = require(installPath + 'server/app/functions');
 var camera = require(installPath + 'server/app/camera');
 //var robot = require(installPath + 'server/app/robot');
@@ -48,16 +48,17 @@ function greetings() {
 
 var serverADDR = 'N/A';
 var LogR = 0;
-var TelemetryFN = "";
+var TelemetryFN = 'N/A';
 var prevTel="";
 var prevPitch="";
 var THReceived=0;
 
-var TelemetryHeader;
-var PIDHeader
+var TelemetryHeader = 'N/A';
+var PIDHeader ='N/A';
 var ArduSysHeader;
-var Telemetry ={}
-var PID ={}
+var Telemetry ={};
+var PID ={};
+var PIDVal;
 var ArduSys = {};
 
 var serialPort = new com.SerialPort(serPort, {
@@ -97,7 +98,6 @@ Object.keys(ifaces).forEach(function (ifname) {
     }
   });
 });
-
 
 //---------------
 
@@ -156,31 +156,13 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   //Server Commands
   socket.on('SerCMD', function(CMD){  
     socket.emit('CMD', CMD);    
-    if ( CMD == "LOG_ON" ) {
-      //console.log("Log started");
-      if (TelemetryFN == "") {
-	  var myDate = new Date();
-	  TelemetryFN = 'Telemetry_' + myDate.getFullYear() + myDate.getMonth() + myDate.getDate() +  myDate.getHours() +  myDate.getMinutes() + myDate.getSeconds()+ '.csv';
-	  
-	  fs.appendFile(PathTelFile+TelemetryFN, 'time' + ',');
-	  //write headers
-	  for(var prop in Telemetry) {
-	    if(Telemetry.hasOwnProperty(prop)){
-		//console.log(prop);
-		fs.appendFile(PathTelFile+TelemetryFN, prop + ',', function (err) {
-		  if (err) throw err;          
-		});
-	    }
-	  }
-	  fs.appendFile(PathTelFile+TelemetryFN, '\n');
-	  //fs.close(PathTelFile+TelemetryFN);
-	}
-	socket.emit('Info', PathTelFile+TelemetryFN)
-	//console.log('Start logging to file ');
-	//console.log(PathTelFile+TelemetryFN);
-	
-        LogR = 1;
-      }
+    if ( CMD == "LOG_ON" && !LogR) {
+        TelemetryFN = 'Telemetry_' + systemModules.timeStamp(); 
+      socket.emit('Info', PathTelFile+TelemetryFN)
+      systemModules.setTelemetryFile(PathTelFile, TelemetryFN, TelemetryHeader, PIDHeader, SEPARATOR);
+       LogR = 1;
+        
+    }
     else if ( CMD == "LOG_OFF" ){
 	//console.log("Log Stopped");
 	socket.emit('Info', "logging stoped");     
@@ -254,13 +236,18 @@ serialPort.on('data', function(data, socket) {
 	    //console.log(i + ' ' + Telemetry[i]);
 	  }
 	  j = 0;
-	  eventEmitter.emit('log', data);
+	  
+	  //eventEmitter.emit('log', data);
+	  
+	  if (LogR == 1){
+	    systemModules.addTelemetryRow(PathTelFile, TelemetryFN, TelemetryHeader, data, PIDHeader, PIDVal, SEPARATOR)
+	  }
 	}
 	
 	//"TH" means we are receiving Telemetry Headers
         if (data.indexOf('TH') !== -1)
 	{
-	   TelemetryHeader = data.split(SEPARATOR);
+            TelemetryHeader = data.split(SEPARATOR);
 	  var arrayLength = TelemetryHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    Telemetry[TelemetryHeader[i]] = "N/A";
@@ -268,12 +255,12 @@ serialPort.on('data', function(data, socket) {
           }
         
           THReceived=1;
-	  eventEmitter.emit('log', data);
+	  //eventEmitter.emit('log', data);
 	}
 	
 	if (data.indexOf('SYSH') !== -1)
 	{
-	   ArduSysHeader = data.split(SEPARATOR);
+	  ArduSysHeader = data.split(SEPARATOR);
 	  var arrayLength = ArduSysHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    ArduSys[ArduSysHeader[i]] = "N/A";
@@ -297,31 +284,28 @@ serialPort.on('data', function(data, socket) {
 	    //console.log(i + ' ' + Telemetry[i]);
 	  }
 	  j = 0;
-	  eventEmitter.emit('log', data);
+	  //eventEmitter.emit('log', data);
 	}
 	
         if (data.indexOf('PID') !== -1)
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
-          //console.log(data);
-	  //console.log('------------- PID settings -------------');
+          PIDVal = "";
+          
 	  for (var i in PID) {
 	    PID[i] = tokenData[j];
-            //console.log(i + ' ' + PID[i]);
+            //PIDVal is used as a string to be concatenated in log file
+	    PIDVal = PIDVal + SEPARATOR + PID[i];
 	    j++;
 	     }
 	  j = 0;
-	  //eventEmitter.emit('log', data);
 	}
 	
         if (data.indexOf('PIDH') !== -1)
-	{   //console.log(data);
-            //console.log('------------- PID Header -------------');
-	
-	   PIDHeader = data.split(SEPARATOR);
-           
-	  var arrayLength = PIDHeader.length;
+	{
+            PIDHeader = data.split(SEPARATOR);
+          var arrayLength = PIDHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    PID[PIDHeader[i]] = "N/A";
 	    //console.log(PIDHeader[i]);// + ' ' + PID[PIDHeader[i]]);
@@ -330,12 +314,7 @@ serialPort.on('data', function(data, socket) {
                 serialPort.write('READ PIDParamTX\n\r');
                  
             }, 100);
-	  
-	     
-          //eventEmitter.emit('log', data);
-          
-         
-	}
+        }
 	
 
 	
@@ -357,18 +336,7 @@ serialPort.on('data', function(data, socket) {
 	  }
 	}
 	
-	if (LogR == 1){
-	  LogRow = new Date().getTime() + SEPARATOR;
-      LogRow = LogRow + data;
-  fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
-		  if (err) {
-		  console.log('ERROR: ' + err);
-		  console.log(LogRow + '\n' )
-		  LogR=0;
-		  }
-		});
-  fs.appendFile(PathTelFile+TelemetryFN, '\r\n');
-	}
+	
 });
  
 });
