@@ -8,7 +8,7 @@ installedVersion="$(ruby -rjson -e 'j = JSON.parse(File.read("/home/pi/Bailey/se
 updateDir="/tmp/update"
 
 #Check local git version
-latestVersion="$(git ls-remote $remoteRepository | grep -o 'refs/tags/[0-9]*' | sort -rV | head | grep -o '[^\/]*$' | tail -1)" 
+latestVersion="$(git ls-remote $remoteRepository | grep -o 'refs/tags/[0-9]*' | sort -V | head | grep -o '[^\/]*$' | tail -1)" 
 
 repositoryFile="https://github.com/pfnegrini/Bailey/archive/"$latestVersion".tar.gz"
 
