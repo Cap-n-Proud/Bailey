@@ -264,7 +264,7 @@ SerialCommand SCmd;   // The SerialCommand object
 float imuValues[6];
 float ypr[3];
 float pitch, roll, yaw, prev_pitch, prev_yaw, prev_roll;
-float pitchd1, pitchd2;
+float pitchd, pitchd2;
 
 long StartL=0, LoopT=0, StartL2=0;
 
@@ -421,13 +421,12 @@ void setup() {
 
 void updateIMUSensors() {
   double angleT;
-  prev_pitch = pitch;
   sixDOF.getYawPitchRoll(ypr);
   //sixDOF.getEuler(ypr);
   yaw = ypr[0];
   roll = ypr[1];
   pitch = ypr[2];
-  pitchd1 = pitch - prev_pitch;  
+  
  
   
   angleT = pitch; 

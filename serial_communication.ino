@@ -87,11 +87,14 @@ void TelemetryTX()
     //balanceKalmanFilter.correct(dISTE);
     char buffer[10];
     //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
+    pitchd = (pitch - prev_pitch);
+    prev_pitch = pitch;
+      
     line = "T" + SEPARATOR
            + yaw + SEPARATOR
            + pitch + SEPARATOR
            + roll + SEPARATOR
-           + pitchd1 + SEPARATOR
+           + pitchd + SEPARATOR
            + dISTE + SEPARATOR
            //+ anglePIDOutput + SEPARATOR
            + leftMotorSpeed + SEPARATOR
