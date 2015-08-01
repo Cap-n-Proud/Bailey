@@ -2,6 +2,9 @@
 //Change slot for Raspberry 
 //Change slot for camera (no need of pan
 
+PIcameraDiam = 8;
+PIcameraX = 25;
+PIcameraY = 25;
 // Raspberry Pi dimensions 85.60mm x 56mm x 21mm 
 widht = 148;
 depth = 120;
@@ -13,7 +16,7 @@ USBH = 20;
 USBL = 50 + 6;
 FN = 50;
 CameraModulePos = [0, 70, 20];
-Tolerance= 0.2;
+Tolerance= 0.5;
 HSupportHoleDiam = 25;
 
 $fn = 50;
@@ -64,7 +67,7 @@ module H() {
 		//translate([-USBL/2+56,-depth/2,-10])rotate([0,0,90])cube([85.60,56,21]);
         
         //Hole for RGB LED
-        translate([0, 0, depth/2]) rotate([0, 0, 0]) cylinder(h=10,r=5/2+Tolerance, center=true);
+        translate([0, 0, depth/2]) rotate([0, 0, 0]) cylinder(h=10,r=5/2-Tolerance, center=true);
         
         //Hole for anchoring
 		translate([widht / 2, 0, 0]) rotate([90, 180, 90]) cylinder(h=10,r=HSupportHoleDiam/2, center=true);
@@ -73,7 +76,7 @@ module H() {
 
 	}
     
-    //This is the support fo rthe raspberry slot
+    //This is the support fo  rthe raspberry slot
      intersection(){
             HeadShell();
             for (z = [-USBL/2: 2: USBL/2]) 
@@ -200,7 +203,11 @@ module bearingServo() {
 module bearingNoServo() {
 	union() {
 		SUB_bearing();
-		translate([0,0,-6/2])cylinder(h = 8, r = HSupportHoleDiam/2-Tolerance, center=true);
+        
+		translate([0,0,-6/2])difference(){
+            cylinder(h = 8, r = HSupportHoleDiam/2-Tolerance, center=true);
+            cylinder(h = 8, r = HSupportHoleDiam/2-Tolerance-4, center=true);
+        }
 	}
 }
 
@@ -239,26 +246,88 @@ module PiSupport() {
 			translate([-USBL / 2, -widht / 2, -USBH / 2 - 5]) cube([USBL, widht, 5]);
 			resize([widht + border - T, depth - T, depth - T]) sphere(1);
 		}
-
+    translate([(USBL - 20)/2+10/2+2.75/2,-widht / 2 +85-58-3,-USBH / 2 -2]){
+translate([0, +85-58, -2])cylinder(r=2.75/2-Tolerance, h=10, center=true);
+translate([0, +85-58+58, -2])cylinder(r=2.75/2-Tolerance, h=10, center=true);
+translate([0-49, +85-58, -2])cylinder(r=2.75/2-Tolerance, h=10, center=true);
+translate([0-49, +85-58+58, -2])cylinder(r=2.75/2-Tolerance, h=10, center=true);
+}
 	}
+
 }
 
 
 
-/*difference(){
-H();
-translate([0,0,-widht/4])cube([widht, depth, widht/2], center=true);
-}*/
 
-//H();
 //PiSupport();
-
+//bearingServo();
 //bearingNoServo();
-                translate([-1, 0, -5])
+ /*               translate([-1, 0, -5])
   cube([USBL,20,2], center = true);
 for (z = [-USBL/2: 3: USBL/2]) 
             {
                 translate([z, 0, 0])
-                cube([0.8,20,10], center = true);
+                cube([0.6,20,10], center = true);
             }
-            
+   */
+
+
+module SUB_PiCamHoles(T) {
+// T is the tolerance for holes
+        translate([PIcameraX/2-2, 0, PIcameraY/2-2])rotate([90,0,0])cylinder(r=1+T,h=10, center=true);
+		translate([-(PIcameraX/2-2), 0, PIcameraY/2-2])rotate([90,0,0])cylinder(r=1+T,h=10, center=true);
+		translate([PIcameraX/2-2, 0, (PIcameraY/2-2)-12.5])rotate([90,0,0])cylinder(r=1+T,h=10, center=true);
+		translate([-(PIcameraX/2-2), 0, (PIcameraY/2-2)-12.5])rotate([90,0,0])cylinder(r=1+T,h=10, center=true); 
+    
+}    
+
+module eye(){
+resize([widht/4+10,0,+depth/4+15])
+intersection()
+{
+difference() {
+		HeadShell();
+        
+    }
+
+translate(CameraModulePos) rotate([100, 0, 0]) resize([2DOF_L, 2DOF_H, 50]) cylinder(h = 30, r = 100);
+}
+
+//difference()
+
+{
+intersection()
+{
+difference() {
+		resize([widht + border, depth, depth]) sphere(1);
+		//Create the inner shell
+		resize([widht + border , depth -20, depth - 20]) sphere(1);
+        
+    }
+
+translate(CameraModulePos) rotate([100, 0, 0]) resize([2DOF_L, 2DOF_H, 50]) cylinder(h = 30, r = 100);
+}
+}
+
+
+}
+module PICam()
+{
+    
+{
+translate([0,-12,0])cube([PIcameraX + Tolerance, 20, PIcameraY + Tolerance], center = true);
+translate([0, 0, -2.5]) 
+rotate([90, 0, 0]) cube([PIcameraDiam + Tolerance, 10, PIcameraDiam + Tolerance], center = true);
+    translate([0,-12,-PIcameraY/2])cube([PIcameraX - 5, 20, 8], center = true);
+//		translate([0,0.9*R,0])
+SUB_PiCamHoles(0.3);
+}
+}
+
+difference()
+{
+eye();
+translate([0,widht/4+20,15])rotate([12,0,0])PICam();
+}
+
+//PICam();

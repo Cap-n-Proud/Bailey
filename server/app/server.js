@@ -157,8 +157,11 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   socket.on('SerCMD', function(CMD){  
     socket.emit('CMD', CMD);    
     if ( CMD == "LOG_ON" && !LogR) {
-        TelemetryFN = 'Telemetry_' + systemModules.timeStamp(); 
+        TelemetryFN = 'Telemetry_' + systemModules.timeStamp() + '.csv'; 
       socket.emit('Info', PathTelFile+TelemetryFN)
+      //console.log('*'+TelemetryHeader+'*');
+      //console.log('*'+PIDHeader+'*');
+      
       systemModules.setTelemetryFile(PathTelFile, TelemetryFN, TelemetryHeader, PIDHeader, SEPARATOR);
        LogR = 1;
         
@@ -179,7 +182,7 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   socket.on('SHUTDOWN', function(){
     socket.emit('Info', "Bailey going down for maintenance now");
     function puts(error, stdout, stderr) { sys.puts(stdout) }
-    exec('sudo shutdown');    
+    exec('sudo shutdown now');    
   });
   
   socket.on('disconnect', function(){

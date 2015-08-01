@@ -63,13 +63,23 @@ function setTelemetryFile(PathTelFile, TelemetryFN, TelemetryHeader, PIDHeader, 
 {
 	var file = fs.createWriteStream(PathTelFile+TelemetryFN);
         var Headers = TelemetryHeader.concat(PIDHeader);
-        //var Headers = TelemetryHeader.replace(/[\n\r]/g, '') + PIDHeader;
-        file.write(Headers.join(", "));    
+        Headers = 'Timestamp' + SEPARATOR + Headers.join(", ");
+        Headers = Headers.replace(/[\n\r]/g, '');
+        Headers = Headers + '\n';
+        
+        //file.write(Headers.join(", "), function (err) {
+        file.write(Headers, function (err) {
+        if (err) {
+            console.log('ERROR: ' + err);
+	    console.log(LogRow + '\n' )
+            LogR=0;
+		  }
+	});    
 }
 
 function addTelemetryRow(PathTelFile, TelemetryFN, TelemetryHeader, data, PIDHeader, PIDVal, SEPARATOR){
     LogRow = new Date().getTime() + SEPARATOR;
-    LogRow = LogRow + data.replace(/[\n\r]/g, '') + PIDVal + '\n'; //ADD PID data here PIDVal + 
+    LogRow = LogRow + data.replace(/[\n\r]/g, '') + PIDVal + '\n';  
     fs.appendFile(PathTelFile+TelemetryFN, LogRow, function (err) {
         if (err) {
             console.log('ERROR: ' + err);
