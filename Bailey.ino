@@ -266,7 +266,7 @@ float ypr[3];
 float pitch, roll, yaw, prev_pitch, prev_yaw, prev_roll;
 float pitchd, pitchd2;
 
-long StartL=0, LoopT=0, StartL2=0;
+long StartL=0, LoopT=0, StartL2=0, TxLoopTime=0;//, PrevTxLoopTime=0;
 
 String LastEvent="";
 
@@ -488,7 +488,6 @@ void loop() {
     debugTimedAction.check();
   
   LoopT = millis()-StartL;
-  dISTE = (LoopT/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
   ISTE = ISTE + dISTE;
 }
 

@@ -87,9 +87,14 @@ void TelemetryTX()
     //balanceKalmanFilter.correct(dISTE);
     char buffer[10];
     //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
+    //Need to calculate parameters here because the main loop has a different frequency
     pitchd = (pitch - prev_pitch);
     prev_pitch = pitch;
-      
+    //PrevTxLoopTime = TxLoopTime;
+    TxLoopTime = millis()-TxLoopTime;
+    
+    dISTE = (TxLoopTime/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
+    
     line = "T" + SEPARATOR
            + yaw + SEPARATOR
            + pitch + SEPARATOR
