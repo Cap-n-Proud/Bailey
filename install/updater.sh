@@ -13,7 +13,7 @@ latestVersion="$(git ls-remote $remoteRepository | grep -o 'refs/tags/[0-9]*' | 
 repositoryFile="https://github.com/pfnegrini/Bailey/archive/"$latestVersion".tar.gz"
 
 echo current version $installedVersion latest $latestVersion
-if [ "$latestVersion" > "$installedVersion" ]; 
+if [ "$latestVersion" -gt "$installedVersion" ]; 
 then
     
     echo Need update
