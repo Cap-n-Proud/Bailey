@@ -118,7 +118,7 @@ io.on('connection', function(socket){
     
     
   setInterval(function(){
-  if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal']);
+  if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal'], Telemetry['dISTE']);
   //console.log(Telemetry['yaw'] + Telemetry['Event']);
   }, 250);
 //serialPort.write('READ PIDInit\n\r');

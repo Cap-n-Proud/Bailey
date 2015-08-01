@@ -497,8 +497,8 @@ var socket = io();
     document.getElementById("CMD").innerHTML = CMD;    
     });
 
-    socket.on('status', function (y, p, r, b) {
-    document.getElementById("BAL").innerHTML = b;
+    socket.on('status', function (y, p, r, b, dISTE) {
+    document.getElementById("BAL").innerHTML = dISTE;
     document.getElementById("Pitch").innerHTML = p;
     document.getElementById("Compass").innerHTML = y;
     
