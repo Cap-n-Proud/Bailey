@@ -32,6 +32,11 @@ app.get('/d3test', function(req, res) {
   res.end;
 });
 
+app.get('/showConfig', function(req, res) {
+  res.sendFile(installPath + 'server/wwwroot/showConfig.html');
+  res.end;
+});
+
 app.get('/d3', function(req, res) {
   res.sendFile(installPath + 'server/wwwroot/D3.html');
   res.end;

@@ -168,9 +168,22 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
     }
     else if ( CMD == "LOG_OFF" ){
 	//console.log("Log Stopped");
-	socket.emit('Info', "logging stoped");     
+	socket.emit('Info', "logging stopped");     
 	LogR = 0;
     }
+    else if ( CMD == "showConfig" ){
+
+        fs.readFile(__dirname + '/config.json', 'utf8', function (err, json) {
+        if (err) throw err;
+        
+	socket.emit('configSent', json);     
+            
+        });
+    }
+    
+    
+    
+    
       });
 
   socket.on('REBOOT', function(){
