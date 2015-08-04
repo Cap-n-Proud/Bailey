@@ -11,6 +11,23 @@ var events = require('events');
 var eventEmitter = new events.EventEmitter();
 var nodeLib = nconf.get('server:nodeLib');
 
+var bunyan = require(nodeLib + 'bunyan');
+
+//--------------- Logging middleware ---------------
+var log = bunyan.createLogger({
+  name: 'Bailey',
+  streams: [
+    /*{
+      level: 'debug',
+      stream: process.stdout            // log INFO and above to stdout
+    },*/
+    //Log should be outside app folders
+    {
+      path: InstallPath + 'log/log.log'  // log ERROR and above to a file
+    }
+  ]
+});
+
 var fs = require(nodeLib + 'safefs');
 var PathTelFile=nconf.get('telemetry:PathTelFile');
 var SEPARATOR = nconf.get('telemetry:SEPARATOR');
@@ -61,6 +78,16 @@ var PID ={};
 var PIDVal;
 var ArduSys = {};
 
+/*
+ Can use a try... catch statement
+ var SerialPort = require("serialport").SerialPort
+
+try {
+  var serialPort = new SerialPort("/dev/portdoesntexist");
+} catch(error) {
+  console.log("Port not ready/doesn't exist!");
+}
+*/ 
 var serialPort = new com.SerialPort(serPort, {
   baudrate: serBaud,
   parser: com.parsers.readline('\n')
@@ -107,16 +134,17 @@ io.on('connection', function(socket){
     var myDate = new Date();
    
    var startMessage = 'Connected ' + myDate.getHours() + ':' + myDate.getMinutes() + ':' + myDate.getSeconds()+ ' v' + version + ' @' + serverADDR;
-//Init the heades for telemtry data
+  //Init the heades for telemtry data
    serialPort.write('READ RemoteInit\n\r');
     //Trasmit system and PID parameters
    
     socket.emit('serverADDR', serverADDR);
     socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, PID);
     console.log('New socket.io connection - id: %s', socket.id);
+    
+    //Add also the disconnection event
+    log.info('Client connected ' + socket.id);
 
-    
-    
   setInterval(function(){
   if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal'], Telemetry['dISTE']);
   //console.log(Telemetry['yaw'] + Telemetry['Event']);
@@ -135,32 +163,30 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
   socket.on('Video', function(Video){
    socket.emit('CMD', Video);
     function puts(error, stdout, stderr) { sys.puts(stdout) }
-     exec('sudo bash ' + installPath + 'server/app/bin/' + Video, puts);
+    exec('sudo bash ' + installPath + 'server/app/bin/' + Video, puts);
         
     });
 
   //Set commands goes to Arduino directly
-  socket.on('SCMD', function(CMD){
-    //console.log(CMD);
+    socket.on('SCMD', function(CMD){
     serialPort.write('SCMD ' + CMD + '\n');
-    //Commands are echoed back to the remote
-    //socket.emit('CMD', 'SCMD ' + CMD);    
-      });
+    log.debug('Command SCMD ' + CMD);
+    });
   
     socket.on('move', function(dX, dY){
 	//console.log('event: ', dX, dY);
 	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n');
-	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');	
+	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');
+	log.debug('Move command SCMD ' + CMD);
 	});
     
   //Server Commands
   socket.on('SerCMD', function(CMD){  
     socket.emit('CMD', CMD);    
     if ( CMD == "LOG_ON" && !LogR) {
-        TelemetryFN = 'Telemetry_' + systemModules.timeStamp() + '.csv'; 
+      TelemetryFN = 'Telemetry_' + systemModules.timeStamp() + '.csv'; 
       socket.emit('Info', PathTelFile+TelemetryFN)
-      //console.log('*'+TelemetryHeader+'*');
-      //console.log('*'+PIDHeader+'*');
+      log.debug('Telemetry logging started ' + PathTelFile+TelemetryFN);
       
       systemModules.setTelemetryFile(PathTelFile, TelemetryFN, TelemetryHeader, PIDHeader, SEPARATOR);
        LogR = 1;
@@ -170,37 +196,35 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 	//console.log("Log Stopped");
 	socket.emit('Info', "logging stopped");     
 	LogR = 0;
+	log.debug('Telemetry logging stopped ' + PathTelFile+TelemetryFN);
     }
     else if ( CMD == "showConfig" ){
-
         fs.readFile(__dirname + '/config.json', 'utf8', function (err, json) {
-        if (err) throw err;
-        
-	socket.emit('configSent', json);     
-            
+        if (err) throw err;        
+	socket.emit('configSent', json);            
         });
     }
-    
-    
-    
-    
-      });
+  });
 
   socket.on('REBOOT', function(){
     function puts(error, stdout, stderr) { sys.puts(stdout) }
+    log.info('Server rebootiing now');
     exec('sudo reboot now');
     sockets.emit('Info', "Rebooting")
+
   });
 
   socket.on('SHUTDOWN', function(){
-    socket.emit('Info', "Bailey going down for maintenance now");
+    socket.emit('Info', "Bailey going down for maintenance now!");
+    log.info('Bailey going down for maintenance now!');
     function puts(error, stdout, stderr) { sys.puts(stdout) }
-    exec('sudo shutdown now');    
+    exec('sudo shutdown now');
+    
   });
   
   socket.on('disconnect', function(){
     console.log('Disconnected id: %s', socket.id);
-
+    log.info('Client disconnected ' + socket.id);
   }); 
   
     eventEmitter.on('CMDecho', function(data){
@@ -218,21 +242,27 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 io.on('disconnect', function () {
         console.log('A socket with sessionID ' + hs.sessionID 
             + ' disconnected!');
-
+	log.info('A socket with sessionID ' + hs.sessionID 
+            + ' disconnected!');
     });
 
 http.listen(serverPort, function(){
-console.log('listening on *: ', serverPort);//
+console.log('listening on *: ', serverPort);
+log.info('Server listening on ' + serverADDR + ':' + serverPort + ' video feed: ' + videoFeedPort);
+
 greetings();  
   
 //Read input from Arduino and stores it into a dictionary
 serialPort.on('data', function(data, socket) {	 	
-	//var TelemetryHeader, PIDHeader, ArduSysHeader;
-        //var Telemetry, PID, ArduSys = {};
-        //console.log(data);
+/*
+We store sensor data in arrays.
+0/ send command via seiral to provide data
+1/ check what are we receiving (first letter of the trnasmission)
+2/ populate the correct variable
+
+*/
 	//"T" means we are receiving Telemetry data
         //console.log(data);
-        
         //this emits raw data from Arduino for debug purposes
         eventEmitter.emit('serialData', data);
         
@@ -263,7 +293,7 @@ serialPort.on('data', function(data, socket) {
 	//"TH" means we are receiving Telemetry Headers
         if (data.indexOf('TH') !== -1)
 	{
-            TelemetryHeader = data.split(SEPARATOR);
+          TelemetryHeader = data.split(SEPARATOR);
 	  var arrayLength = TelemetryHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    Telemetry[TelemetryHeader[i]] = "N/A";
@@ -316,11 +346,13 @@ serialPort.on('data', function(data, socket) {
 	    j++;
 	     }
 	  j = 0;
+	  log.info('PID values changed ' + PIDHeader + '/n' + PIDVal);
+
 	}
 	
         if (data.indexOf('PIDH') !== -1)
 	{
-            PIDHeader = data.split(SEPARATOR);
+          PIDHeader = data.split(SEPARATOR);
           var arrayLength = PIDHeader.length;
 	  for (var i = 0; i < arrayLength; i++) {
 	    PID[PIDHeader[i]] = "N/A";
@@ -328,19 +360,19 @@ serialPort.on('data', function(data, socket) {
 	  }
 	     setTimeout(function () {
                 serialPort.write('READ PIDParamTX\n\r');
-                 
             }, 100);
         }
 	
-
-	
-	
+	//Change the first word to be 'ArduConfig'
 	//If the first word is '***' prints in the server console. Used to debug the config from Arduino
 	if (data.indexOf('***') !== -1)
 	{
-	  console.log(data);	  
+	  console.log(data);
+	  log.info('Configuration from Arduino received: ' + data);
+
 	}
 	
+	//IS THIS SILL RELEVANT?
 	//Get the header for the object that stores telemetry data
 	if (data.indexOf('HEADER') !== -1)
 	{

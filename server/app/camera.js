@@ -35,6 +35,8 @@ var debugLevel = nconf.get('server:debugLevel');
        fs.mkdir(TLfolderName);
        socket.emit('Folder', TLfolderName);
        //console.log(TLfolderName);
+       //log.info('Time-Lapse started ' + TLFolder + 'TL_' + timeStamp);
+
        myVar = setInterval(function() {
            snapShotTL(imgWidth, imgHeight, TLfolderName, TLfileName)
        }, TLInterval);
