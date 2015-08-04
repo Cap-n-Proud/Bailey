@@ -7,10 +7,12 @@
     "version": "12",
     "nodeLib": "/usr/local/lib/node_modules/",
     "SNFolder": "/home/pi/Documents/SN/",
-    "installPath": "/home/pi/Bailey/"
+    "installPath": "/home/pi/Bailey/",
+    "logfilePath": "/home/pi/Documents/log/",
+    "empty":"N/A"
   },
   "telemetry": {
-    "PathTelFile": "/home/pi/Documents/log/",
+    "telemetryfilePath": "/home/pi/Documents/telemetry/",
     "SEPARATOR": ","    
   },
   "hardware":{

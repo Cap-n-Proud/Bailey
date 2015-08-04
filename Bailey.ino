@@ -18,12 +18,12 @@
 
 //#include <SoftwareSerial.h>
 #include <PID_v1.h> // https://github.com/br3ttb/Arduino-PID-Library.git
-#include <Button.h>   // github.com/JChristensen/Button 
+//#include <Button.h>   // github.com/JChristensen/Button 
 #include <TimedAction.h> // for updating sensors and debug http://bit.ly/pATDBi http://playground.arduino.cc/Code/TimedAction
 #include <EEPROM.h> // for storing configuraion
 #include <avr/wdt.h> // watchdog http://savannah.nongnu.org/projects/avr-libc/
 #include <MovingAvarageFilter.h> // github.com/sebnil/Moving-Avarage-Filter--Arduino-Library-
-//#include <FIR.h> // github.com/sebnil/FIR-filter-Arduino-Library
+#include <FIR.h> // github.com/sebnil/FIR-filter-Arduino-Library
 #include <KalmanFilter.h> // github.com/nut-code-monkey/KalmanFilter-for-Arduino
                           // Try also: https://github.com/TKJElectronics/KalmanFilter.git
 
@@ -128,17 +128,20 @@ void setConfiguration(boolean force) {
       Serial.print("No config found, defaulting ");
     }
     /* First time running, set defaults */
-    configuration.FirmwareVersion = "0.9";
+    configuration.FirmwareVersion = "1.1";
     configuration.speedPIDOutputLowerLimit = -10.00; //Default was -5
     configuration.speedPIDOutputHigherLimit = 10.00;
-    configuration.anglePIDAggKp = 10.70;
-    configuration.anglePIDAggKi = 2.5;
-    configuration.anglePIDAggKd = 5.51;
-    configuration.anglePIDConKp = 4.80;
+
+    configuration.anglePIDConKp = 8.80;
     configuration.anglePIDConKi = 2.21;
-    configuration.anglePIDConKd = 0.475;
+    configuration.anglePIDConKd = 0.975;
+    
+    configuration.anglePIDAggKp = 12.70;
+    configuration.anglePIDAggKi = 3.5;
+    configuration.anglePIDAggKd = 1.951;
+   
     configuration.speedPIDKp = 0.3854;
-    configuration.speedPIDKi = 0.1374; //0.0051
+    configuration.speedPIDKi = 0.1374;
     configuration.speedPIDKd = 0.00245;
     configuration.anglePIDOutputLowerLimit = -100;
     configuration.anglePIDOutputHigherLimit = 100;
@@ -159,12 +162,12 @@ void setConfiguration(boolean force) {
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
     configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
-    configuration.Maxthrottle = 1.5; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
         
     configuration.motorsON = 0;
     configuration.debug = 0;
   
-    configuration.TriggerAngleAggressive = 2.50;
+    configuration.TriggerAngleAggressive = 3.50;
     configuration.calibratedZeroAngle = 1.8;
     
     configuration.anglePIDSampling = 10;
@@ -235,13 +238,13 @@ int particleNumber = 0;
 //   Best Performance: both pins have interrupt capability
 //   Good Performance: only the first pin has interrupt capability
 //   Low Performance:  neither pin has interrupt capability
-//#define leftEncoder1 configuration.leftEncoder1
-//#define leftEncoder2 configuration.leftEncoder2
-//#define rightEncoder1 configuration.rightEncoder1
-//#define rightEncoder2 configuration.rightEncoder2
+#define leftEncoder1 2
+#define leftEncoder2 4
+#define rightEncoder1 3
+#define rightEncoder2 5
 
-Encoder MotorLeft(configuration.leftEncoder1, configuration.leftEncoder2);
-Encoder MotorRight(configuration.rightEncoder1, configuration.rightEncoder2);
+Encoder MotorLeft(leftEncoder1, leftEncoder2);
+Encoder MotorRight(rightEncoder1, rightEncoder2);
 
 
 long lastLeftMotorPosition  = 0;
@@ -264,9 +267,9 @@ SerialCommand SCmd;   // The SerialCommand object
 float imuValues[6];
 float ypr[3];
 float pitch, roll, yaw, prev_pitch, prev_yaw, prev_roll;
-float pitchd, pitchd2;
+float pitchd1, pitchd2;
 
-long StartL=0, LoopT=0, StartL2=0, TxLoopTime=0;//, PrevTxLoopTime=0;
+long StartL=0, LoopT=0, StartL2=0,TxLoopTime=0;
 
 String LastEvent="";
 
@@ -279,12 +282,12 @@ int AUTOTUNE = 0;
 
 // filters
 //CHECK if the moving average filters and the FIR are needed
-//MovingAvarageFilter speedMovingAvarageFilter(14); 
-//MovingAvarageFilter angleMovingAvarageFilter(4);
+MovingAvarageFilter speedMovingAvarageFilter(14); 
+MovingAvarageFilter angleMovingAvarageFilter(4);
 KalmanFilter speedKalmanFilter;
 KalmanFilter angleKalmanFilter;
 KalmanFilter balanceKalmanFilter;
-//FIR speedMovingAvarageFilter2;
+FIR speedMovingAvarageFilter2;
 
 // The cascading PIDs. The tunings are updated from the remote
 PID anglePID(&anglePIDInput, &anglePIDOutput, &anglePIDSetpoint, 0, 0, 0, DIRECT); 
@@ -376,7 +379,7 @@ void setup() {
   delay(50);
  
   // Load config from eeprom
-  setConfiguration(false);
+  setConfiguration(true);
   // init i2c and IMU
   delay(100);
   Wire.begin();
@@ -421,25 +424,25 @@ void setup() {
 
 void updateIMUSensors() {
   double angleT;
+  prev_pitch = pitch;
   sixDOF.getYawPitchRoll(ypr);
   //sixDOF.getEuler(ypr);
   yaw = ypr[0];
   roll = ypr[1];
   pitch = ypr[2];
-  
+  pitchd1 = pitch - prev_pitch;  
  
   
   angleT = pitch; 
   // move angle to around equilibrium
   angleKalmanFilter.correct(angleT);
-  anglePIDInput = angleKalmanFilter.getState()- configuration.calibratedZeroAngle;// Dont think it is needed here "- configuration.calibratedZeroAngle;"
+  anglePIDInput = angleKalmanFilter.getState() - configuration.calibratedZeroAngle;// Dont think it is needed here "- configuration.calibratedZeroAngle;"
 }
 
 //------------------ Main loop ------------------ 
 void loop() { 
   StartL = millis();
   wdt_reset();
-
   // update sensors and motors, also chek commands and send back telemetry
   updateIMUSensorsTimedAction.check();
   updateMotorStatusesTimedAction.check();
@@ -488,6 +491,7 @@ void loop() {
     debugTimedAction.check();
   
   LoopT = millis()-StartL;
+  dISTE = (LoopT/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
   ISTE = ISTE + dISTE;
 }
 

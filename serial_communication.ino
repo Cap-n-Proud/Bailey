@@ -88,18 +88,17 @@ void TelemetryTX()
     char buffer[10];
     //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
     //Need to calculate parameters here because the main loop has a different frequency
-    pitchd = (pitch - prev_pitch);
+    pitchd1 = (pitch - prev_pitch);
     prev_pitch = pitch;
     //PrevTxLoopTime = TxLoopTime;
     TxLoopTime = millis()-TxLoopTime;
     
     dISTE = (TxLoopTime/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
-    
     line = "T" + SEPARATOR
            + yaw + SEPARATOR
            + pitch + SEPARATOR
            + roll + SEPARATOR
-           + pitchd + SEPARATOR
+           + pitchd1 + SEPARATOR
            + dISTE + SEPARATOR
            //+ anglePIDOutput + SEPARATOR
            + leftMotorSpeed + SEPARATOR
@@ -310,6 +309,23 @@ void setCommand()
       configuration.anglePIDConKd = atof(value) / 100;
       delay(5);
       controlConfig();
+      PIDParamTX();
+    }
+     
+    else if (String("resetPID").equals(arg)) {
+      configuration.anglePIDConKp = 0;
+      configuration.anglePIDConKi = 0;
+      configuration.anglePIDConKd = 0;
+      
+      configuration.anglePIDAggKp = 0;
+      configuration.anglePIDAggKi = 0;
+      configuration.anglePIDAggKd = 0;
+      
+      configuration.speedPIDKp = 0;
+      configuration.speedPIDKi = 0;
+      configuration.speedPIDKd = 0;
+      controlConfig();
+      delay(5);
       PIDParamTX();
     }
     else if (String("TriggerAngleAggressive").equals(arg)) {

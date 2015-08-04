@@ -10,7 +10,9 @@ nconf.argv()
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
 var nodeLib = nconf.get('server:nodeLib');
+var logfilePath = nconf.get('server:logfilePath');
 
+var telemetryfilePath = nconf.get('telemetry:telemetryfilePath');
 var bunyan = require(nodeLib + 'bunyan');
 
 //--------------- Logging middleware ---------------
@@ -23,13 +25,12 @@ var log = bunyan.createLogger({
     },*/
     //Log should be outside app folders
     {
-      path: InstallPath + 'log/log.log'  // log ERROR and above to a file
+      path: logfilePath + 'Baileylog.log'  // log ERROR and above to a file
     }
   ]
 });
 
 var fs = require(nodeLib + 'safefs');
-var PathTelFile=nconf.get('telemetry:PathTelFile');
 var SEPARATOR = nconf.get('telemetry:SEPARATOR');
 var installPath = nconf.get('server:installPath');
 var com = require(nodeLib + 'serialport');
@@ -177,7 +178,7 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 	//console.log('event: ', dX, dY);
 	serialPort.write('SCMD Steer ' + Math.round(dX) + '\n');
 	serialPort.write('SCMD Throttle ' + Math.round(dY) + '\n');
-	log.debug('Move command SCMD ' + CMD);
+	//log.debug('Move command SCMD ' + CMD);
 	});
     
   //Server Commands
@@ -185,10 +186,10 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
     socket.emit('CMD', CMD);    
     if ( CMD == "LOG_ON" && !LogR) {
       TelemetryFN = 'Telemetry_' + systemModules.timeStamp() + '.csv'; 
-      socket.emit('Info', PathTelFile+TelemetryFN)
-      log.debug('Telemetry logging started ' + PathTelFile+TelemetryFN);
+      socket.emit('Info', telemetryfilePath+TelemetryFN)
+      log.debug('Telemetry logging started ' + telemetryfilePath + TelemetryFN);
       
-      systemModules.setTelemetryFile(PathTelFile, TelemetryFN, TelemetryHeader, PIDHeader, SEPARATOR);
+      systemModules.setTelemetryFile(telemetryfilePath, TelemetryFN, TelemetryHeader, PIDHeader, SEPARATOR);
        LogR = 1;
         
     }
@@ -196,7 +197,7 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 	//console.log("Log Stopped");
 	socket.emit('Info', "logging stopped");     
 	LogR = 0;
-	log.debug('Telemetry logging stopped ' + PathTelFile+TelemetryFN);
+	log.debug('Telemetry logging stopped ' + telemetryfilePath+TelemetryFN);
     }
     else if ( CMD == "showConfig" ){
         fs.readFile(__dirname + '/config.json', 'utf8', function (err, json) {
@@ -286,7 +287,7 @@ We store sensor data in arrays.
 	  //eventEmitter.emit('log', data);
 	  
 	  if (LogR == 1){
-	    systemModules.addTelemetryRow(PathTelFile, TelemetryFN, TelemetryHeader, data, PIDHeader, PIDVal, SEPARATOR)
+	    systemModules.addTelemetryRow(telemetryfilePath, TelemetryFN, TelemetryHeader, data, PIDHeader, PIDVal, SEPARATOR)
 	  }
 	}
 	
@@ -346,7 +347,7 @@ We store sensor data in arrays.
 	    j++;
 	     }
 	  j = 0;
-	  log.info('PID values changed ' + PIDHeader + '/n' + PIDVal);
+	  //log.info('PID values changed ' + PIDHeader + '\n' + PIDVal);
 
 	}
 	
@@ -368,7 +369,7 @@ We store sensor data in arrays.
 	if (data.indexOf('***') !== -1)
 	{
 	  console.log(data);
-	  log.info('Configuration from Arduino received: ' + data);
+	  log.info('Configuration received from Arduino: ' + data);
 
 	}
 	

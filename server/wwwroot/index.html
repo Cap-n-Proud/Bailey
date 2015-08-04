@@ -275,7 +275,7 @@
 		    </div>
 		    
 		    <div class="small-3 columns">
-		      <input id="right-label" placeholder="SCMD command" type="text">
+		      <input id="SCMDCommand" placeholder="SCMD command" type="text">
 		    </div>
 		    
 		    <div class="small-2 columns">
@@ -486,7 +486,7 @@ var socket = io();
 
     function sendCMD() {
      //document.getElementById("CMD").innerHTML = document.getElementById("right-label").value;
-      socket.emit('SCMD', document.getElementById("right-label").value);    
+      socket.emit('SCMD', document.getElementById("SCMDCommand").value);    
     }
 
     socket.on('Info', function(CMD){
