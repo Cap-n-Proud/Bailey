@@ -128,7 +128,7 @@ void setConfiguration(boolean force) {
       Serial.print("No config found, defaulting ");
     }
     /* First time running, set defaults */
-    configuration.FirmwareVersion = "1.1";
+    configuration.FirmwareVersion = "1.2";
     configuration.speedPIDOutputLowerLimit = -10.00; //Default was -5
     configuration.speedPIDOutputHigherLimit = 10.00;
 
@@ -161,8 +161,8 @@ void setConfiguration(boolean force) {
     configuration.motorRightMinimumSpeed = 58;//44;
     configuration.steerGain = 1;
     configuration.throttleGain = 1;
-    configuration.Maxsteer = 10; //Max allowed percentage difference. Up to the remote to provide the right scale.  
-    configuration.Maxthrottle = 3; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
+    configuration.Maxsteer = 20; //Max allowed percentage difference. Up to the remote to provide the right scale.  
+    configuration.Maxthrottle = 6; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
         
     configuration.motorsON = 0;
     configuration.debug = 0;
@@ -259,6 +259,7 @@ float rightMotorSpeed;
 
 float speedKalmanFiltered = 0;
 float speedFIRFiltered = 0;
+float dISTEKalmanFiltered = 0;
 
 
 SerialCommand SCmd;   // The SerialCommand object
@@ -287,6 +288,7 @@ MovingAvarageFilter angleMovingAvarageFilter(4);
 KalmanFilter speedKalmanFilter;
 KalmanFilter angleKalmanFilter;
 KalmanFilter balanceKalmanFilter;
+KalmanFilter dISTEKalmanFilter;
 FIR speedMovingAvarageFilter2;
 
 // The cascading PIDs. The tunings are updated from the remote
@@ -390,6 +392,7 @@ void setup() {
   // Filters
   speedKalmanFilter.setState(0);
   balanceKalmanFilter.setState(0);
+  dISTEKalmanFilter.setState(0);
   //float coefficients[] = {
   //  1,1,1,1,1,1,1,1,1              };
   //speedMovingAvarageFilter2.setCoefficients(coefficients);
@@ -431,7 +434,8 @@ void updateIMUSensors() {
   roll = ypr[1];
   pitch = ypr[2];
   pitchd1 = pitch - prev_pitch;  
- 
+  
+   
   
   angleT = pitch; 
   // move angle to around equilibrium

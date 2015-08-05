@@ -1,4 +1,4 @@
-//Make pasage for cables larger
+//Make passage for cables larger
 
 RobotY=220;
 RobotX=80;
@@ -14,6 +14,10 @@ plateanchorY=15;
 holeradius=3;
 holespace=3*holeradius;
 borderZ=30;
+border=8;
+T=0.3;
+
+stepperSupportHeight = 70;
 
 border=holespace+((plateX)/holespace-floor((plateX)/holespace))/2;
 include <TextGenerator.scad>;
@@ -271,12 +275,12 @@ module PCBSupport(PCBHoleR){
 
 }
 
-module PCBSupportStud(PCBHoleR){
+module PCBSupportHole(PCBHoleR, Height){
 	difference (){
-		cylinder(h=plateZ+12,r=holeradius+.3);	
+		cylinder(h=plateZ+Height,r=holeradius-T);	
 		cylinder(h=plateZ-5,r=holeradius/2);	
 	}
-		translate([0,0,plateZ+12])cylinder(h=6,r=PCBHoleR);	
+		translate([0,0,plateZ+Height])cylinder(h=6,r=PCBHoleR);	
 
 }
 
@@ -307,32 +311,50 @@ module base(){
 			}}
 			translate([0,0,RobotX]){
 				difference(){
-				translate([0,0,0]) cube([RobotX,25,RobotZ/2]);
+                    
+				translate([0,-stepperSupportHeight+0,0]) cube([RobotX,25+stepperSupportHeight,5]);
+                    
 				translate([15,25/2,-RobotZ/2])	cylinder(h=2*RobotZ,r=3);	
 				translate([RobotX-15,25/2,-RobotZ/2])	cylinder(h=2*RobotZ,r=3);}}}
-difference()
-{			translate([0,-RobotX-RobotZ/2,-25/2+7]){
-				//cube([RobotX,2*(RobotX+0),10], center=false);
-				cube([RobotX,2*(RobotX+RobotZ/4),6], center=false);
 
+
+difference()
+{
+    translate([0,-RobotX-RobotZ/2,-25/2+7]){
+
+				cube([RobotX,2*(RobotX+RobotZ/4),6], center=false);
+                translate([RobotX/2,0,-((5+60)/2)]){rotate([90,0,0])cylinder(h=10, r=38.01/2+T, center=true);
+    
+    translate([47.14/2,0,47.14/2])rotate([90,0,0])cylinder(h=10, r=2.5, center=true);
+    
+     translate([47.14/2,0,-47.14/2])rotate([90,0,0])cylinder(h=10, r=2.5, center=true);
+    
+     translate([-47.14/2,0,47.14/2])rotate([90,0,0])cylinder(h=10, r=2.5, center=true);
+    
+     translate([-47.14/2,0,-47.14/2])rotate([90,0,0])cylinder(h=10, r=2.5, center=true);                
+                }
 			}
 	
-translate([RobotX/2-31.24/2,0,0]) {
-for (j= [0 : 6.35 : plateY-1*border ]){
+translate([RobotX/2-border,0,0]) {
+
+for (i= [0 : 2*holeradius+3: plateY - 4*border]){
+
+for (j= [0 : 2*holeradius+3: plateY-2*border ]){
 	
-			translate([0,j-plateY+border, -10]) cylinder(h=15,r = 2);
-			translate([31.24,j-plateY+border, -10]) cylinder(h=15,r = 2);
-			translate([0,-j+plateY-border, -10]) cylinder(h=15,r = 2);
-			translate([31.24,-j+plateY-border, -10]) cylinder(h=15,r = 2);
-
-	}	}translate([RobotX/2-31.24/2,0,0]) cube([4,15,20],center=true);
-translate([RobotX/2+31.24/2,0,0]) cube([4,15,20],center=true);
+			translate([i-border,j-plateY+border, -10]) cylinder(h=15,r = holeradius);
+    translate([i-border,-j+plateY-border, -10]) cylinder(h=15,r = holeradius);
+	}	
+}
+    }
+    
+    translate([plateX/4,0, 0])cylinder(h=15,r = plateX/15, center=true);
+    
 }
 
 }
 
-//base();
-//PCBSupportStud(1.2);
+base();
+PCBSupportHole(0,8);
 //permaproto drill holes 1.2mm 
 
 

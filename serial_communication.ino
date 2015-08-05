@@ -94,12 +94,15 @@ void TelemetryTX()
     TxLoopTime = millis()-TxLoopTime;
     
     dISTE = (TxLoopTime/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
+    dISTEKalmanFilter.correct(dISTE); 
+    dISTEKalmanFiltered = dISTEKalmanFilter.getState();
+    
     line = "T" + SEPARATOR
            + yaw + SEPARATOR
            + pitch + SEPARATOR
            + roll + SEPARATOR
            + pitchd1 + SEPARATOR
-           + dISTE + SEPARATOR
+           + dISTEKalmanFiltered + SEPARATOR
            //+ anglePIDOutput + SEPARATOR
            + leftMotorSpeed + SEPARATOR
            + rightMotorSpeed + SEPARATOR
