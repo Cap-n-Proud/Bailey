@@ -483,9 +483,7 @@ void setCommand()
 
 void unrecognizedCMD() {
 
-  Serial.print("--------------------- unrecognized command");
-
-  Serial.println(" -----------------------------");
+  Serial.print("E, unrecognized command");
 
 }
 
