@@ -273,6 +273,7 @@ float pitchd1, pitchd2;
 long StartL=0, LoopT=0, StartL2=0,TxLoopTime=0;
 
 String LastEvent="";
+String PIDConfigType="";
 
 // PID variables
 double anglePIDSetpoint, anglePIDInput, anglePIDOutput;
@@ -463,13 +464,17 @@ void loop() {
     anglePIDSetpoint = - speedPIDOutput;
 
     // Update angle PID tuning
-   if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0) { 
+   if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0 && PIDConfigType <> "CONSERVATIVE") { 
       //we're close to setpoint, use conservative tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDConKp, (float)configuration.anglePIDConKi, (float)configuration.anglePIDConKd);
-    }
-    else if (abs(anglePIDInput) >  (float)configuration.TriggerAngleAggressive && abs(anglePIDInput) <= 30 ) {
+      PIDConfigType = "CONSERVATIVE";
+     
+   }
+    else if (abs(anglePIDInput) >  (float)configuration.TriggerAngleAggressive && abs(anglePIDInput) <= 30 && PIDConfigType <> "AGGRESSIVE") {
       //we're far from setpoint, use aggressive tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDAggKp, (float)configuration.anglePIDAggKi, (float)configuration.anglePIDAggKd);
+      PIDConfigType = "AGGRESSIVE";
+      
     }
     else
     {
