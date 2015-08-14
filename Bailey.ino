@@ -464,13 +464,13 @@ void loop() {
     anglePIDSetpoint = - speedPIDOutput;
 
     // Update angle PID tuning
-   if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0 && PIDConfigType <> "CONSERVATIVE") { 
+   if(abs(anglePIDInput) < (float)configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0 ){//&& PIDConfigType != "CONSERVATIVE") { 
       //we're close to setpoint, use conservative tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDConKp, (float)configuration.anglePIDConKi, (float)configuration.anglePIDConKd);
       PIDConfigType = "CONSERVATIVE";
      
    }
-    else if (abs(anglePIDInput) >  (float)configuration.TriggerAngleAggressive && abs(anglePIDInput) <= 30 && PIDConfigType <> "AGGRESSIVE") {
+    else if (abs(anglePIDInput) >  (float)configuration.TriggerAngleAggressive && abs(anglePIDInput) <= 30 ){//&& PIDConfigType != "AGGRESSIVE") {
       //we're far from setpoint, use aggressive tuning parameters
       anglePID.SetTunings((float)configuration.anglePIDAggKp, (float)configuration.anglePIDAggKi, (float)configuration.anglePIDAggKd);
       PIDConfigType = "AGGRESSIVE";

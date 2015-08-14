@@ -465,20 +465,29 @@ void setCommand()
       configuration.debugSampleRate = atoi(value);
 
     
-    else {
+   
+else {
       
-      Serial.print("----------------");
-      Serial.print("Unknown command ");
+      Serial.print("E, Unknown command ");
       Serial.print(arg);
-      Serial.println(" ----------------");
-
+      Serial.print(" arg ");
+      Serial.println(value);
     }
+     
 
   }
+  else {
+      
+      Serial.print("E, Unknown command ");
+      Serial.println(arg);
+    
+  }
+  
 
 
 
 }
+
 
 
 void unrecognizedCMD() {

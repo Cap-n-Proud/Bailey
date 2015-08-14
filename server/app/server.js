@@ -373,6 +373,13 @@ We store sensor data in arrays.
 
 	}
 	
+	//Handle errors from Arduino
+	if (data.indexOf('E') !== -1)
+	{
+          log.error('ERROR: ' + data);
+        }
+	  
+	
 	//IS THIS SILL RELEVANT?
 	//Get the header for the object that stores telemetry data
 	if (data.indexOf('HEADER') !== -1)
