@@ -51,6 +51,7 @@ struct Configuration {
   double speedPIDKp;
   double speedPIDKi;
   double speedPIDKd;
+  double speedPIDMoveFactor;
   double speedPIDOutputLowerLimit;
   double speedPIDOutputHigherLimit;
   double anglePIDAggKp;
@@ -135,6 +136,7 @@ void setConfiguration(boolean force) {
     configuration.anglePIDConKp = 8.80;
     configuration.anglePIDConKi = 2.21;
     configuration.anglePIDConKd = 0.975;
+    configuration.speedPIDMoveFactor = 0.7;
     
     configuration.anglePIDAggKp = 12.70;
     configuration.anglePIDAggKi = 3.5;
@@ -460,6 +462,15 @@ void loop() {
 
     // Speed pid,  input is wheel speed, output is angleSetpoint
     speedPIDSetpoint =  configuration.Maxthrottle*UserControl[1];
+    //If we are moving we need to reduce the Speed PID values in order to avoud "stops and go"
+    if (UserControl[1] != 0)
+    {
+     speedPID.SetTunings(configuration.speedPIDMoveFactor*configuration.speedPIDKp, configuration.speedPIDMoveFactor*configuration.speedPIDKi, configuration.speedPIDMoveFactor*configuration.speedPIDKd);
+    }
+    else
+    {
+     speedPID.SetTunings(configuration.speedPIDKp, configuration.speedPIDKi, configuration.speedPIDKd);
+    }
     speedPID.Compute();
     anglePIDSetpoint = - speedPIDOutput;
 
@@ -488,6 +499,7 @@ void loop() {
    
     if (configuration.motorsON==1){
       //Serial.println("input sent to motors");
+      
       motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
       motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0]));// + configuration.throttleGain*UserControl[1]);
     }

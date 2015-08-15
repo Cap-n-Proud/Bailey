@@ -89,11 +89,13 @@ try {
   console.log("Port not ready/doesn't exist!");
 }
 */ 
+
 var serialPort = new com.SerialPort(serPort, {
   baudrate: serBaud,
   parser: com.parsers.readline('\n')
   });
   
+
 serialPort.on('open',function() {
   console.log('Arduino connected on '+ serPort + ' @' + serBaud);
   
@@ -148,10 +150,10 @@ io.on('connection', function(socket){
 
   setInterval(function(){
   if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal'], Telemetry['dISTE']);
-  //console.log(Telemetry['yaw'] + Telemetry['Event']);
+  if(Telemetry['pitch'] > 60)log.error('BALANCING FAIL! Pitch: ' + Telemetry['pitch']);            
   }, 250);
-//serialPort.write('READ PIDInit\n\r');
-     
+
+  
   setInterval(function(){
 
   var usage = "N/A";
