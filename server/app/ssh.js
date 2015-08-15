@@ -1,8 +1,10 @@
 var fs = require('fs');
 var ssh2 = require('/usr/local/lib/node_modules/ssh2').Client;
 
-var source = "/home/pi/Documents/log/Baileylog.log";
-var target = "/share/Public/Baileylog.log";
+function uploadFile(source, target)
+{
+//var source = "/home/pi/Documents/log/Baileylog.log";
+//var target = "/share/Public/Baileylog.log";
 var conn = new ssh2();
  
 conn.on(
@@ -46,9 +48,9 @@ conn.on(
                 writeStream.on(
                     'close',
                     function () {
-                        console.log( "- file transferred" );
+                        console.log( "- file " + source + " ("+ writeStream.bytesWritten +" bytes) transferred" );
                         sftp.end();
-                         console.log(writeStream.bytesWritten); 
+                         //console.log(writeStream.bytesWritten); 
                         process.exit( 0 );
                     }
                 );
@@ -87,3 +89,7 @@ conn.connect(
         //"passphrase":""
     }
 );
+
+}
+   // exports ======================================================================
+  exports.uploadFile = uploadFile;
