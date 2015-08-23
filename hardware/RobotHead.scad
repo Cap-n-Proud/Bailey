@@ -19,7 +19,7 @@ CameraModulePos = [0, 70, 20];
 Tolerance= 0.5;
 HSupportHoleDiam = 25;
 
-$fn = 50;
+$fn = 150;
 
 //$fs = 0.01; // change me to 0.5 when doing final render for export
 
@@ -204,9 +204,9 @@ module bearingNoServo() {
 	union() {
 		SUB_bearing();
         
-		translate([0,0,-6/2])difference(){
-            cylinder(h = 8, r = HSupportHoleDiam/2-Tolerance, center=true);
-            cylinder(h = 8, r = HSupportHoleDiam/2-Tolerance-4, center=true);
+		translate([0,0,-8/2])difference(){
+            cylinder(h = 12, r = HSupportHoleDiam/2-Tolerance, center=true);
+            cylinder(h = 12, r = HSupportHoleDiam/2-Tolerance-4, center=true);
         }
 	}
 }
@@ -324,10 +324,11 @@ SUB_PiCamHoles(0.3);
 }
 }
 
-difference()
+/*difference()
 {
 eye();
 translate([0,widht/4+20,15])rotate([12,0,0])PICam();
 }
-
+*/
 //PICam();
+bearingNoServo();
