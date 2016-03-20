@@ -336,16 +336,27 @@ module prism(l, w, h, he) {
     ]);
 }
 
-
-module SUB_nemaMountingPlateHoles() {
-        translate([-35 / 2, plateY / 2, 0]) {
+  module SUB_nemaMountingPlateHoles() {
+        translate([-(3/5)*plateY/2, plateY / 2, 0]) {
+            hull(){
             translate([0, 0, 0]) cylinder(h = 15, r = holeradius, center = true);
-            translate([35, 0, 0]) cylinder(h = 15, r = holeradius, center = true);
+            translate([(1/5)*plateY, 0, 0]) cylinder(h = 15, r = holeradius, center = true);
+            }
+           
+            hull(){
+            translate([(3/5)*plateY, 0, 0]) cylinder(h = 15, r = holeradius, center = true);
+            translate([(3/5)*plateY-(1/5)*plateY, 0, 0]) cylinder(h = 15, r = holeradius, center = true);
+            }
+            hull(){
             translate([0, 25, 0]) cylinder(h = 15, r = holeradius, center = true);
-            translate([35, 25, 0]) cylinder(h = 15, r = holeradius, center = true);
-
+            translate([(1/5)*plateY, 25, 0]) cylinder(h = 15, r = holeradius, center = true);
+            }
+            hull(){
+            translate([(3/5)*plateY, 25, 0]) cylinder(h = 15, r = holeradius, center = true);
+            translate([(3/5)*plateY-(1/5)*plateY, 25, 0]) cylinder(h = 15, r = holeradius, center = true);
+            }
         }
-    }
+  }
     //creates attachment for other vertical modules
 module base() {
     {
