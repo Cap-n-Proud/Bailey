@@ -1,12 +1,12 @@
-Zdim = 40;
+Zdim = 45;
 Xdim = 60;
 Ydim = 67;
 thickness = 2;
 supportDiam = 5;
 buttonDiam = 16;
 XT60X = 15.54;
-XT60Y = 8.16;
-XT60Z = 16.10;
+XT60Y = 8.16 + 0.5;
+XT60Z = 16.10 + 0.5;
 
 textHV = "HVDC";
 textLV = "5V";
@@ -78,7 +78,7 @@ module SUB_pillars() {
 
 module SUB_regulatorSupport() {
     translate([0, 0, 0]) support("round", supportDiam, 8, 2, 0, 0, 0, 0, 0.2);
-    translate([11, 33, 0]) support("round", supportDiam, 8, 2, 0, 0, 0, 0, 0.2);
+    translate([16, 33, 0]) support("round", supportDiam, 8, 2, 0, 0, 0, 0, 0.2);
 
 
 }
@@ -87,16 +87,16 @@ module powerPlant() {
     difference() {
         box(Xdim, Ydim, Zdim, thickness, "box");
         //Button Holes
-        translate([Xdim / 4, Ydim / 2, -buttonDiam / 2]) rotate([90, 0, 0]) {
+        translate([Xdim / 4, Ydim / 2, -buttonDiam/2-3]) rotate([90, 0, 0]) {
 
             cylinder(r = buttonDiam / 2, h = 10, center = true);
-            translate([0, buttonDiam + 3, 0]) cylinder(r = buttonDiam / 2, h = 10, center = true);
+            translate([0, buttonDiam + 5, 0]) cylinder(r = buttonDiam / 2, h = 10, center = true);
         }
     }
     SUB_pillars();
 
 
-    translate([-Xdim / 4, -Ydim / 5, -Zdim / 2]) SUB_regulatorSupport();
+    translate([-Xdim / 3, -Ydim / 5+2, -Zdim / 2]) SUB_regulatorSupport();
 
     //XT60 holder
     translate([0, -Ydim / 2 + XT60Y / 2, 0]) box(XT60X, XT60Y, Zdim, thickness, "servo");
@@ -116,7 +116,7 @@ module topLid() {
     translate([0, 0, 0])
     difference() {
         cube([Xdim + thickness, Ydim + thickness, thickness / 2], center = true);
-        SUB_lidHoles();
+        SUB_lidHoles(0.5);
     }
     translate([-Xdim / 4, -Ydim / 4, 0]) labelVoltage(textHV);
     translate([-Xdim / 4 - 12, -Ydim / 4, 0]) labelVoltage(textLV);
@@ -124,13 +124,13 @@ module topLid() {
 }
 
 
-module SUB_lidHoles() {
-    translate([-Xdim / 2 + supportDiam / 2, -Ydim / 2 + supportDiam / 2, -5]) cylinder(r = 2.5 / 2, h = 10);
-    translate([(Xdim / 2 - supportDiam / 2), (Ydim / 2 - supportDiam / 2), -5]) cylinder(r = 2.5 / 2, h = 10);
-    translate([Xdim / 2 - supportDiam / 2, -Ydim / 2 + supportDiam / 2, -5]) cylinder(r = 2.5 / 2, h = 10);
-    translate([-Xdim / 2 + supportDiam / 2, Ydim / 2 - supportDiam / 2, -5]) cylinder(r = 2.5 / 2, h = 10);
+module SUB_lidHoles(T) {
+    translate([-Xdim / 2 + supportDiam / 2, -Ydim / 2 + supportDiam / 2, -5]) cylinder(r = (2.5 + T) / 2, h = 10);
+    translate([(Xdim / 2 - supportDiam / 2), (Ydim / 2 - supportDiam / 2), -5]) cylinder(r = (2.5 + T) / 2, h = 10);
+    translate([Xdim / 2 - supportDiam / 2, -Ydim / 2 + supportDiam / 2, -5]) cylinder(r = (2.5 + T) / 2, h = 10);
+    translate([-Xdim / 2 + supportDiam / 2, Ydim / 2 - supportDiam / 2, -5]) cylinder(r = (2.5 + T) / 2, h = 10);
 
-    //Holes to power the lines, need to check the geomety. Fro now visually adjuste
+    //Holes to power the lines, need to check the geomety. For now visually adjusted
      translate([-Xdim / 4 + 3, -Ydim / 6, -5]) cylinder(r = 4 / 2, h = 10);
      translate([-Xdim / 4 - 9, -Ydim / 6, -5]) cylinder(r = 4 / 2, h = 10);
 
@@ -143,4 +143,3 @@ module SUB_lidHoles() {
 powerPlant();
 
 //translate([0, 0, 0]) topLid();
-
