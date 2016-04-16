@@ -9,7 +9,7 @@
 	"events":"1.x.x",
 	"bunyan": "1.x.x",
 	"fs": "0.x.x",
-	"serialport": "1.x.x",
+	"serialport": "2.x.x",
 	"safefs": "4.x.x",
 	"socket.io": "1.x.x",
 	"opencv": "5.x.x"
