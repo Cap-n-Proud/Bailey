@@ -2,7 +2,7 @@
 // to refresh the port allocation
 // cd /home/pi/Bailey/server/app
 
-var nconf = require('/usr/local/lib/node_modules/nconf');
+var nconf = require('nconf');
 nconf.argv()
        .env()
        .file({ file: __dirname + '/config.json' });
@@ -13,7 +13,7 @@ var nodeLib = nconf.get('server:nodeLib');
 var logfilePath = nconf.get('server:logfilePath');
 
 var telemetryfilePath = nconf.get('telemetry:telemetryfilePath');
-var bunyan = require(nodeLib + 'bunyan');
+var bunyan = require('bunyan');
 
 //--------------- Logging middleware ---------------
 var log = bunyan.createLogger({
@@ -30,14 +30,14 @@ var log = bunyan.createLogger({
   ]
 });
 
-var fs = require(nodeLib + 'safefs');
+var fs = require('safefs');
 var SEPARATOR = nconf.get('telemetry:SEPARATOR');
 var installPath = nconf.get('server:installPath');
-var com = require(nodeLib + 'serialport');
-var express = require(nodeLib + 'express');
+var com = require('serialport');
+var express = require('express');
 var app = express();
 var http = require('http').Server(app);
-var io = require(nodeLib + 'socket.io')(http);
+var io = require('socket.io')(http);
 
 var sys = require('sys');
 var exec = require('child_process').exec;
@@ -47,17 +47,20 @@ var serBaud = nconf.get('server:serBaud');
 var serverPort = nconf.get('server:serverPort');
 var version = nconf.get('server:version');
 var videoFeedPort = nconf.get('MJPG:MJPGPort');
+var videoWidth = nconf.get('video:videoWidth');
+var videoHeight = nconf.get('video:videoHeight');
+var fps= nconf.get('video:fps');
 
 // include custom functions ======================================================================
-var systemModules = require(installPath + 'server/app/systemModules');
-var functions = require(installPath + 'server/app/functions');
-var camera = require(installPath + 'server/app/camera');
-//var robot = require(installPath + 'server/app/robot');
+var systemModules = require(__dirname + '/systemModules');
+var functions = require(__dirname + '/functions');
+var camera = require(__dirname + '/camera');
+//var robot = require(__dirname + 'server/app/robot');
 
 // load the routes
 require('./routes')(app);
 
-app.use(express.static(installPath + 'server/wwwroot'));
+app.use(express.static(__dirname + '../wwwroot'));
 //Not nice, implement asciimo: https://github.com/Marak/asciimo
 function greetings() {
 
@@ -136,12 +139,13 @@ io.on('connection', function(socket){
    
     var myDate = new Date();
    
+  
    var startMessage = 'Connected ' + myDate.getHours() + ':' + myDate.getMinutes() + ':' + myDate.getSeconds()+ ' v' + version + ' @' + serverADDR;
   //Init the heades for telemtry data
-   serialPort.write('READ RemoteInit\n\r');
+  serialPort.write('READ RemoteInit\n\r');
     //Trasmit system and PID parameters
    
-    socket.emit('serverADDR', serverADDR);
+    //socket.emit('serverADDR', serverADDR);
     socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, PID);
     console.log('New socket.io connection - id: %s', socket.id);
     
@@ -250,7 +254,7 @@ io.on('disconnect', function () {
     });
 
 http.listen(serverPort, function(){
-console.log('listening on *: ', serverPort);
+console.log('Server listening on ' + serverADDR + ':' + serverPort + ' video feed: ' + videoFeedPort);
 log.info('Server listening on ' + serverADDR + ':' + serverPort + ' video feed: ' + videoFeedPort);
 
 greetings();  

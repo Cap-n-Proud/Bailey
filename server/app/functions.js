@@ -1,3 +1,8 @@
+var nconf = require('nconf');
+nconf.argv()
+       .env()
+       .file({ file: __dirname + '/config.json' });
+
     function rescale(x, in_min, in_max, out_min, out_max) {
         var output;
         output = (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;

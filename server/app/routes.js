@@ -2,10 +2,11 @@
 // Routers
 // expose the routes to our app with module.exports
 
-var nconf = require('/usr/local/lib/node_modules/nconf');
+var nconf = require('nconf');
 nconf.argv()
        .env()
-       .file({ file: '/home/pi/Bailey/server/app/config.json' });
+       .file({ file: __dirname + '/config.json' });
+
 var installPath = nconf.get('server:installPath');
 
 
@@ -22,43 +23,43 @@ var path = require('path');
 // Routers
 {
 app.get('/', function(req, res){
-  res.sendFile('/home/pi/Bailey/server/wwwroot/index.html');
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/index.html'));
   res.end;
 });
 
 
 app.get('/d3test', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/d3test.html');
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/d3test.html'));
   res.end;
 });
 
 app.get('/showConfig', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/showConfig.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot/showConfig.html'));
   res.end;
 });
 
 app.get('/d3', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/D3.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot/D3.html'));
   res.end;
 });
 
 app.get('/livedata', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/livedata.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot/livedata.html'));
   res.end;
 });
 
 app.get('/serialMonitor', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/serialMonitor.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot/serialMonitor.html'));
   res.end;
 });
 
 app.get('/test', function(req, res) {
-  res.sendFile('/home/pi/Bailey/server/wwwroot/test.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot//test.html'));
   res.end;
 });
 
 app.get('/vj', function(req, res) {
-  res.sendFile(installPath + 'server/wwwroot/robotj.html');
+  res.sendFile(path.resolve(__dirname + '../wwwroot/robotj.html'));
   res.end;
 });
 

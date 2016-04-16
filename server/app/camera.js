@@ -1,9 +1,7 @@
-   var nconf = require('/usr/local/lib/node_modules/nconf');
+var nconf = require('nconf');
 nconf.argv()
-    .env()
-    .file({
-        file: '/home/pi/bo-Pi/app/config.json'
-    });
+       .env()
+       .file({ file: __dirname + '/config.json' });
 
 var nodeLib = nconf.get('server:nodeLib');
 var exec = require('child_process').exec;

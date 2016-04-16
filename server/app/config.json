@@ -3,16 +3,16 @@
     "name": "Bailey",
     "serverPort": 54321,
     "serBaud": 38400,
-    "serPort": "/dev/ttyACM0",
+    "serPort": "/dev/tty0",
     "version": "13",
     "nodeLib": "/usr/local/lib/node_modules/",
-    "SNFolder": "/home/pi/Documents/SN/",
-    "installPath": "/home/pi/Bailey/",
-    "logfilePath": "/home/pi/Documents/log/",
+    "SNFolder": "/home/odroid/Documents/SN/",
+    "installPath": "/home/odroid/Bailey/",
+    "logfilePath": "/home/odroid/Documents/log/",
     "empty":"N/A"
   },
   "telemetry": {
-    "telemetryfilePath": "/home/pi/Documents/telemetry/",
+    "telemetryfilePath": "/home/odroid/Documents/telemetry/",
     "SEPARATOR": ","    
   },
   "hardware":{

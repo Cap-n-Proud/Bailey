@@ -60,7 +60,7 @@
 			
 			setInterval(function(){
 				if (joystick.deltaX() !=0 || joystick.deltaY() !=0){
-					socket.emit('move', 100 * joystick.deltaX()/250, - 100 * joystick.deltaY()/250);				
+					socket.emit('move', 100 * joystick.deltaX()/250, + 100 * joystick.deltaY()/250);				
 				}
 				var outputEl	= document.getElementById('result');
 				outputEl.innerHTML	= '<b>Result:</b> '
