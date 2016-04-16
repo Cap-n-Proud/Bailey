@@ -1,5 +1,6 @@
 //SCMD SerialDebug_ON
 //SCMD Motors_ON
+//READ RemoteInit 0
 
 void RemoteRead() {
   SCmd.readSerial();     // We don't do much, just process serial commands
@@ -86,26 +87,27 @@ void TelemetryTX()
   if (!configuration.debug) {
     //balanceKalmanFilter.correct(dISTE);
     char buffer[10];
+    char ypr0[6], ypr1[6], ypr2[6], headingBuff[6], altBuff[6];
     //if (AUTOTUNE == 1) {LastEvent = LastEventSPO;}
     //Need to calculate parameters here because the main loop has a different frequency
     pitchd1 = (pitch - prev_pitch);
     prev_pitch = pitch;
     //PrevTxLoopTime = TxLoopTime;
-    TxLoopTime = millis()-TxLoopTime;
-    
-    dISTE = (TxLoopTime/1000*(anglePIDSetpoint - pitch)*(anglePIDSetpoint - pitch));  
-    dISTEKalmanFilter.correct(dISTE); 
-    dISTEKalmanFiltered = dISTEKalmanFilter.getState();
-    
-    line = "T" + SEPARATOR
-           + yaw + SEPARATOR
-           + pitch + SEPARATOR
-           + roll + SEPARATOR
+    TxLoopTime = millis() - TxLoopTime;
+
+    dISTE = (TxLoopTime / 1000 * (anglePIDSetpoint - pitch) * (anglePIDSetpoint - pitch));
+    //dISTEKalmanFilter.correct(dISTE);
+    //dISTEKalmanFiltered = dISTEKalmanFilter.getState();
+
+    line = "T" + SEPARATOR +
+           dtostrf(ypr[0], 1, 2, ypr0) +  SEPARATOR +
+           dtostrf(ypr[1], 1, 2, ypr1) +  SEPARATOR +
+           dtostrf(ypr[2], 1, 2, ypr2) +  SEPARATOR +
            + pitchd1 + SEPARATOR
            + dISTEKalmanFiltered + SEPARATOR
            //+ anglePIDOutput + SEPARATOR
-           + leftMotorSpeed + SEPARATOR
-           + rightMotorSpeed + SEPARATOR
+           //+ leftMotorSpeed + SEPARATOR
+           //+ rightMotorSpeed + SEPARATOR
            + LoopT;
     //+ SEPARATOR
     //+ LastEvent;
@@ -217,10 +219,6 @@ void setCommand2()
     }
 
 
-
-
-
-
   }
 
 
@@ -234,11 +232,11 @@ void setCommand()
   //String cmd = "";
   arg = SCmd.next();
   value = SCmd.next();
-//This echoes the command back
-    String cmd = String("SCMD " + String(arg) + " " + String(value));
-    Serial.println(cmd);
- 
-    
+  //This echoes the command back
+  String cmd = String("SCMD " + String(arg) + " " + String(value));
+  Serial.println(cmd);
+
+
   if (value != NULL)
   {
     // parameters
@@ -314,16 +312,16 @@ void setCommand()
       controlConfig();
       PIDParamTX();
     }
-     
+
     else if (String("resetPID").equals(arg)) {
       configuration.anglePIDConKp = 0;
       configuration.anglePIDConKi = 0;
       configuration.anglePIDConKd = 0;
-      
+
       configuration.anglePIDAggKp = 0;
       configuration.anglePIDAggKi = 0;
       configuration.anglePIDAggKd = 0;
-      
+
       configuration.speedPIDKp = 0;
       configuration.speedPIDKi = 0;
       configuration.speedPIDKd = 0;
@@ -347,8 +345,8 @@ void setCommand()
       configuration.motorsON = atoi(value);
       if (atoi(value) == 0)
       {
-        motorLeft.setSpeed(0);
-        motorRight.setSpeed(0);
+        // motorLeft.setSpeed(0);
+        // motorRight.setSpeed(0);
       }
 
       //Serial.println("Motors CMD");
@@ -464,25 +462,25 @@ void setCommand()
     else if (String("debugSampleRate").equals(arg))
       configuration.debugSampleRate = atoi(value);
 
-    
-   
-else {
-      
+
+
+    else {
+
       Serial.print("E, Unknown command ");
       Serial.print(arg);
       Serial.print(" arg ");
       Serial.println(value);
     }
-     
+
 
   }
   else {
-      
-      Serial.print("E, Unknown command ");
-      Serial.println(arg);
-    
+
+    Serial.print("E, Unknown command ");
+    Serial.println(arg);
+
   }
-  
+
 
 
 

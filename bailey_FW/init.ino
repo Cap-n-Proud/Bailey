@@ -17,10 +17,10 @@ void controlConfig() {
 
   //angleKalmanFilter.setR(configuration.angleKalmanFilterR);
   //speedKalmanFilter.setR(configuration.speedKalmanFilterR);
-  
+
   // init motors
-  motorLeft.setMinimumSpeed(configuration.motorLeftMinimumSpeed);
-  motorRight.setMinimumSpeed(configuration.motorRightMinimumSpeed);
+  //motorLeft.setMinimumSpeed(configuration.motorLeftMinimumSpeed);
+  //motorRight.setMinimumSpeed(configuration.motorRightMinimumSpeed);
 }
 
 
