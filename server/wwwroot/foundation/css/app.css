@@ -296,12 +296,14 @@ dl dd {
 /*  background: #367ebd;*/
 /*}*/
 
-
+.PIDSliderBox {
+ padding: 10px;
+}
 
  .labelPID {
     color: white;
     text-align: center;
-     font-size: 0.875em; 
+     font-size: 0.675em; 
 }
 
 .PIDSliderLabel{
@@ -311,19 +313,23 @@ dl dd {
     text-align: center;
      font-size: 0.875em;
      float: left;
-  padding-left:55px;
+  padding-left:50px;
 
 }
   .vSliderWraper {
      /*overflow: hidden;*/
+       display: inline-block;
+   
 	height: 1.5em;
      width: 1.5em;
      line-height: 1.5em;
 	 content: "";
+      float: center;
    /*margin-top: 100%;*/
  }
  
   .vSlider {
+     display: inline-block;
      white-space: nowrap;
   color: black;
      transform: translate(0,100%) rotate(-90deg);
@@ -331,6 +337,7 @@ dl dd {
 
  }
  
+
 #map_canvas img,
 #map_canvas embed,
 #map_canvas object,
@@ -567,9 +574,9 @@ ul.off-canvas-list {
     background: #444444;
   }
   ul.off-canvas-list li label {
-    background: #444444;
+    /*background: #444444;*/
     border-bottom: none;
-    border-top: 1px solid #5e5e5e;
+    /*border-top: 1px solid #5e5e5e;*/
     color: #999999;
     display: block;
     font-size: 0.66667rem;

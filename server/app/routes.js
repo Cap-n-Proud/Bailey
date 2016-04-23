@@ -14,7 +14,7 @@ module.exports = function(app) {
 
 var path = require('path'); 
 
-    //app.use(express.static(__dirname + '/wwwroot'));
+// app.use(express.static(path.resolve(__dirname + '/../wwwroot')));
     // Routers
   
 
@@ -34,32 +34,42 @@ app.get('/d3test', function(req, res) {
 });
 
 app.get('/showConfig', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot/showConfig.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/showConfig.html'));
   res.end;
 });
 
 app.get('/d3', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot/D3.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/D3.html'));
+  res.end;
+});
+
+app.get('/video', function(req, res) {
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/video.html'));
   res.end;
 });
 
 app.get('/livedata', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot/livedata.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/livedata.html'));
   res.end;
 });
 
 app.get('/serialMonitor', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot/serialMonitor.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/serialMonitor.html'));
   res.end;
 });
 
 app.get('/test', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot//test.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/test.html'));
+  res.end;
+});
+
+app.get('/test2', function(req, res) {
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/test2.html'));
   res.end;
 });
 
 app.get('/vj', function(req, res) {
-  res.sendFile(path.resolve(__dirname + '../wwwroot/robotj.html'));
+  res.sendFile(path.resolve(__dirname + '/../wwwroot/robotj.html'));
   res.end;
 });
 

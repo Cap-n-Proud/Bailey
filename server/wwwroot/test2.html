@@ -1,85 +1,67 @@
-<!DOCTYPE html>
 <html>
 
 <head>
-    <meta http-equiv="content-type" content="text/html; charset=iso-8859-1" />
-    <meta charset="UTF-8">
-    <title>title</title>
-    <meta http-equiv="x-ua-compatible" content="ie=edge">
-    <link rel="stylesheet" href="foundation/css/foundation.css">
-    <!-- In <head> -->
-    <link href="js/noUiSlider/nouislider.css" rel="stylesheet">
-    <link rel="stylesheet" href="font-awesome/css/font-awesome.min.css">
-    <link href="css/custom.css" rel="stylesheet">
-    <link rel='shortcut icon' type='image/x-icon' href='icons/favicon.ico' />
-    <script src="foundation/js/vendor/modernizr.js"></script>
-    <script src="js/socket.io.js" type="text/javascript"></script>
-    <script src="js/noUiSlider/nouislider.js" type="text/javascript"></script>
-
-    <title>New</title>
-
-    <style>
-        .rotated-text {
-            display: inline-block;
-            /*overflow: hidden;*/
-            height: 1.5em;
-            width: 1.5em;
-            line-height: 1.5em;
-            content: "";
-            float: center;
-            /*margin-top: 100%;*/
-        }
-        
-        .rotated-text__inner {
-            display: inline-block;
-            white-space: nowrap;
-            color: black;
-            transform: translate(0, 100%) rotate(-90deg);
-            /*transform-origin: 0 0;*/
-        }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport">
+    <script type="text/javascript" src="/js/socket.io.js"></script>
+    <link rel="stylesheet" href="../foundation/css/app.css">
 
 </head>
 
 <body>
-
-    <div style="height:50px">
-    </div>
-
-    <a href="#" onclick="createSlider(this)" class="button">Add slider</a>
+    <br> <br> <br>
+    <div id="PIDSliders" style="height:150px;"></div>
 
     <script>
-        function createSlider() {
-            var sliderContainer = document.createElement('span');
-            sliderContainer.className = "rotated-text";
-            var slider = document.createElement('input');
-            slider.id = Date.now();
-            slider.type = 'range';
-            slider.min = 0;
-            slider.max = 1;
-            slider.value = 0.5;
-            slider.step = 0.1;
-            slider.className = "rotated-text__inner"
-            sliderContainer.appendChild(slider);
-            document.body.appendChild(sliderContainer);
-        }
+	  var socket = io();
+	  socket.on('connected', function(info, serverADDR, sPort, MJPEGPort, PIDH, PID) {
+            createSliders(PIDH, PID);
+
+		function createSliders(PIDH, PID) {
+			for (i = 1; i < PIDH.length; i++) {
+
+				createVSlider(PIDH[i], 0.8 * PID[PIDH[i]], 1.2 * PID[PIDH[i]], PID[PIDH[i]])
+
+			}
+
+		}
+
+
+		//Main ideas for rotation from:
+		//http://www.benknowscode.com/2014/01/css-rotated-text-parent-dimensions-and-spacing-issues.html
+		function createVSlider(id, min, max, val) {
+			var sliderBox = document.createElement('span');
+			sliderBox.className = "PIDSliderBox";
+
+			var sliderLabel = document.createElement('span');
+			sliderLabel.id = id + 'Val';
+			sliderLabel.className = "PIDSliderLabel";
+			
+			var sliderContainer = document.createElement('span');
+			sliderContainer.className = "vSliderWraper";
+			
+			var slider = document.createElement('input');
+			slider.id = id;
+			slider.type = 'range';
+			slider.min = min;
+			slider.max = max;
+			slider.value = val;
+			slider.step = 1;
+			slider.oninput = function() {
+				document.getElementById(id + 'Val').innerHTML = document.getElementById(id).value
+			};
+			slider.className = "vSlider";
+			sliderBox.appendChild(sliderLabel);
+			sliderContainer.appendChild(slider);
+			sliderBox.appendChild(sliderContainer);
+			//document.body.appendChild(sliderContainer);
+			document.getElementById('PIDSliders').appendChild(sliderBox);
+			document.getElementById(id + 'Val').innerHTML = val;
+	
+		}
+
+	});
     </script>
-
-    <script src="foundation/js/vendor/jquery.js"></script>
-    <script src="foundation/js/vendor/foundation.js"></script>
-    <!-- Other JS plugins can be included here -->
-
-    <script>
-        $(document).foundation();
-    </script>
-    <script>
-        function update_slider() {
-
-            document.getElementById('sl3').value = 10;
-
-        }
-    </script>
-
 </body>
 
 </html>

@@ -1,12 +1,70 @@
-<table style="width:100%">
-  <tr>
-    <th>Firstname</th>
-    <th>Lastname</th> 
-    <th>Points</th>
-  </tr>
-  <tr>
-    <td>Eve</td>
-    <td>Jackson</td> 
-    <td>94</td>
-  </tr>
-</table>
+  <html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport">
+		   <script type="text/javascript" src="/js/socket.io.js"></script>
+    <link rel="stylesheet" href="../foundation/css/app.css">
+
+	</head>
+	<body>
+		<br>		<br>		<br>
+		<div id="PIDSliders"></div>
+        
+		<script>
+			
+			var socket = io();
+		 socket.on('connected', function(info, serverADDR, sPort, MJPEGPort, PIDH, PID){
+         createSliders(PIDH, PID);
+	
+    
+   
+
+
+function createSliders(PIDH, PID) {
+      for(i = 1; i < PIDH.length; i++) {
+  
+      createVSlider(PIDH[i],0.8* PID[PIDH[i]], 1.2*PID[PIDH[i]],PID[PIDH[i]] )
+   
+    } 
+         
+ }
+
+ 
+//Main ideas for rotation from:
+//http://www.benknowscode.com/2014/01/css-rotated-text-parent-dimensions-and-spacing-issues.html
+function createVSlider(id, min, max, val) {
+    var sliderBox = document.createElement('span');
+	sliderBox.className="PIDSliderBox";
+	
+	var sliderLabel = document.createElement('span');
+	sliderLabel.id= id + 'Val';
+	sliderLabel.className="PIDSliderLabel";
+	var sliderContainer = document.createElement('span');
+	sliderContainer.className="vSliderWraper";
+	var slider = document.createElement('input');
+    slider.id = id;
+    slider.type = 'range';
+    slider.min = min;
+    slider.max = max;
+    slider.value = val;
+    slider.step = 1;
+	slider.oninput=function() {document.getElementById(id + 'Val').innerHTML=Math.floor(document.getElementById(id).value)};
+	slider.className="vSlider";
+	sliderBox.appendChild(sliderLabel);
+    sliderContainer.appendChild(slider);
+    sliderBox.appendChild(sliderContainer);
+    //document.body.appendChild(sliderContainer);
+    document.getElementById('PIDSliders').appendChild(sliderBox);
+    		document.getElementById(id + 'Val').innerHTML = Math.floor(val);
+}
+         
+    });
+		 
+
+
+       	
+			
+        
+		</script>
+	</body>
+</html>

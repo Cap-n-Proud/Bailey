@@ -52,15 +52,19 @@ var videoHeight = nconf.get('video:videoHeight');
 var fps= nconf.get('video:fps');
 
 // include custom functions ======================================================================
-var systemModules = require(__dirname + '/systemModules');
-var functions = require(__dirname + '/functions');
-var camera = require(__dirname + '/camera');
+var systemModules = require(__dirname + '/lib/systemModules');
+var functions = require(__dirname + '/lib/functions');
+var camera = require(__dirname + '/lib/camera');
 //var robot = require(__dirname + 'server/app/robot');
+var videoFeed = require(__dirname + '/lib/video');
 
+var path = require('path'); 
+app.use(express.static((__dirname + '/../wwwroot')));
+//console.log((__dirname + '/../wwwroot'));
 // load the routes
 require('./routes')(app);
 
-app.use(express.static(__dirname + '../wwwroot'));
+
 //Not nice, implement asciimo: https://github.com/Marak/asciimo
 function greetings() {
 
@@ -146,12 +150,17 @@ io.on('connection', function(socket){
     //Trasmit system and PID parameters
    
     //socket.emit('serverADDR', serverADDR);
-    socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, PID);
+    socket.emit('connected', startMessage, serverADDR, serverPort, videoFeedPort, PIDHeader, PID);
     console.log('New socket.io connection - id: %s', socket.id);
     
     //Add also the disconnection event
     log.info('Client connected ' + socket.id);
-
+   
+    setTimeout(function() {
+        videoFeed.startVideoFeed(socket, videoWidth, videoHeight, fps); 
+    }, 2000);
+    
+    
   setInterval(function(){
   if(THReceived==1)socket.emit('status', Telemetry['yaw'], Telemetry['pitch'], Telemetry['roll'], Telemetry['bal'], Telemetry['dISTE']);
   if(Telemetry['pitch'] > 60)log.error('BALANCING FAIL! Pitch: ' + Telemetry['pitch']);            
@@ -247,8 +256,8 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
 });
 
 io.on('disconnect', function () {
-        console.log('A socket with sessionID ' + hs.sessionID 
-            + ' disconnected!');
+        //console.log('A socket with sessionID ' + hs.sessionID 
+        //    + ' disconnected!');
 	log.info('A socket with sessionID ' + hs.sessionID 
             + ' disconnected!');
     });
@@ -402,3 +411,7 @@ We store sensor data in arrays.
 });
  
 });
+
+module.exports.Telemetry = Telemetry;
+//module.exports.temperature = temperature;
+module.exports.nconf = nconf;
