@@ -8,9 +8,11 @@
 MPU6050 mpu(MPU_ADDRESS);
 
 #define GYRO_SCALE   (1.0f / 65.5f)    // +/-500 deg/s range: LSB per deg/s
+#define ACCEL_LSB_PER_G   8192.0f              // +/-4 g range
+#define ACCEL_GATE        0.15f                // ignore the accelerometer beyond 1 g +/- 15 %
 #define FILTER_TAU   0.5f              // s, complementary filter time constant
 
-static float tiltEstimate = 0;          // deg, continuous (not wrapped)
+static float tiltEstimate = 0;          // deg, wrapped to +/-180
 static bool imuStarted = false;
 
 static float wrap180(float a) {
@@ -25,7 +27,8 @@ void imuSetup() {
   if (!mpu.testConnection())
     Serial.println(F("E, MPU6050 not found"));
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_500);
-  mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+  // +/-4 g: stepper acceleration ramps alone reach ~2 g and would clip at +/-2 g.
+  mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_4);
   mpu.setDLPFMode(MPU6050_DLPF_BW_42);   // removes motor vibration, ~5 ms delay
   // Measures and removes the gyro bias: keep the robot still during boot.
   mpu.CalibrateGyro(6);
@@ -40,7 +43,14 @@ void imuRead(float dt) {
   float sign = cfg.imuInvert ? -1.0f : 1.0f;
 
   float rate = sign * g[r] * GYRO_SCALE;
+
   float accTilt = sign * atan2((float)a[u], (float)a[v]) * 57.29578f;
+
+  // The accelerometer measures gravity plus the robot's own acceleration.
+  // While the robot accelerates hard (stepper ramps reach ~2 g) its tilt
+  // reading is meaningless, so only trust it when the total is close to 1 g.
+  float norm = sqrt((float)a[0] * a[0] + (float)a[1] * a[1] + (float)a[2] * a[2]) / ACCEL_LSB_PER_G;
+  bool accelUsable = fabs(norm - 1.0f) < ACCEL_GATE;
 
   if (!imuStarted) {
     tiltEstimate = accTilt;
@@ -48,7 +58,7 @@ void imuRead(float dt) {
   }
   // Gyro for fast changes, accelerometer to remove drift. Work on the wrapped
   // difference so it doesn't jump when the tilt passes +/-180.
-  float k = dt / (FILTER_TAU + dt);
+  float k = accelUsable ? dt / (FILTER_TAU + dt) : 0;
   tiltEstimate += rate * dt;
   tiltEstimate += k * wrap180(accTilt - tiltEstimate);
   tiltEstimate = wrap180(tiltEstimate);

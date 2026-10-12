@@ -252,6 +252,10 @@ temperature = ((temperature/1000).toPrecision(3)) + "°C";
         socket.emit('serialData', data);
 
   }); 
+
+    eventEmitter.on('robotEvent', function(data){
+        socket.emit('Info', data);
+  });
  
 });
 
@@ -397,6 +401,14 @@ We store sensor data in arrays.
 	if (tag === 'E')
 	{
           log.error('ERROR: ' + data);
+          eventEmitter.emit('robotEvent', data);
+        }
+
+	//Events (state changes) and autotune progress/results: log and show in the UI
+	if (tag === 'EV' || tag === 'AT')
+	{
+          log.info('Robot: ' + data);
+          eventEmitter.emit('robotEvent', data);
         }
 	  
 	

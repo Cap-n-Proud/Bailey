@@ -3,6 +3,19 @@
 // motorsUpdateSpeed() updates leftSpeed/rightSpeed (% of full speed) and the
 // filtered wheelSpeed used by the speed PID.
 
+// Shared by both motor types once leftSpeed/rightSpeed are known: the filtered
+// speed for the speed PID, plus ground speed and acceleration in physical units
+// for the IMU's acceleration compensation and the autotuner.
+static float lastGroundSpeed = 0;
+
+static void updateWheelMotion(float dt) {
+  float avg = (leftSpeed + rightSpeed) / 2;
+  wheelSpeed += cfg.speedFilter * (avg - wheelSpeed);
+  groundSpeed = avg / 100.0f * fullSpeedMps();
+  if (dt > 0) wheelAccel = (groundSpeed - lastGroundSpeed) / dt;
+  lastGroundSpeed = groundSpeed;
+}
+
 static float clampPercent(float v) {
   if (v > 100) return 100;
   if (v < -100) return -100;
@@ -63,7 +76,7 @@ void motorsUpdateSpeed(float dt) {
   float scale = 100.0f / (cfg.encoderCountsPerSecFull * dt);
   leftSpeed = (cfg.encoderLeftInvert ? -dl : dl) * scale;
   rightSpeed = (cfg.encoderRightInvert ? -dr : dr) * scale;
-  wheelSpeed += cfg.speedFilter * ((leftSpeed + rightSpeed) / 2 - wheelSpeed);
+  updateWheelMotion(dt);
 }
 
 #elif MOTOR_TYPE == MOTOR_STEPPER
@@ -135,11 +148,11 @@ static float stepperSpeedPercent(FastAccelStepper *s, uint8_t invert) {
   return hz / cfg.stepperMaxSpeed * 100.0f;
 }
 
-void motorsUpdateSpeed(float) {
+void motorsUpdateSpeed(float dt) {
   // Steppers don't slip (unless they stall), so the actual step rate is the speed.
   leftSpeed = stepperSpeedPercent(stepperLeft, cfg.motorLeftInvert);
   rightSpeed = stepperSpeedPercent(stepperRight, cfg.motorRightInvert);
-  wheelSpeed += cfg.speedFilter * ((leftSpeed + rightSpeed) / 2 - wheelSpeed);
+  updateWheelMotion(dt);
 }
 
 #endif

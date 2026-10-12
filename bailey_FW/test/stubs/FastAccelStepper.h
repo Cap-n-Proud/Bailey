@@ -34,6 +34,6 @@ class FastAccelStepperEngine {
   FastAccelStepper steppers[2];
   int used = 0;
  public:
-  void init() {}
+  void init() { used = 0; steppers[0] = steppers[1] = FastAccelStepper(); }
   FastAccelStepper *stepperConnectToPin(uint8_t) { return used < 2 ? &steppers[used++] : nullptr; }
 };

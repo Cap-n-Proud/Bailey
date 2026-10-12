@@ -3,7 +3,7 @@
 #include <stdint.h>
 extern int16_t simAccel[3], simGyro[3];
 #define MPU6050_GYRO_FS_500 0x01
-#define MPU6050_ACCEL_FS_2 0x00
+#define MPU6050_ACCEL_FS_4 0x01
 #define MPU6050_DLPF_BW_42 0x03
 class MPU6050 {
  public:

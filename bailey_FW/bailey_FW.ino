@@ -30,6 +30,8 @@ float pitchRate = 0;          // deg/s, straight from the gyro
 float yaw = 0, roll = 0;      // telemetry only (deg)
 float leftSpeed = 0, rightSpeed = 0;   // % of full speed
 float wheelSpeed = 0;         // filtered average, input of the speed PID
+float groundSpeed = 0;        // m/s, unfiltered
+float wheelAccel = 0;         // m/s^2, unfiltered
 
 // Control
 float angleSetpoint = 0;
@@ -177,7 +179,7 @@ void controlStep(float dt) {
   speedPID.kd = f * cfg.speedPIDKd;
   speedPID.outMin = -cfg.speedPIDOutputLimit;
   speedPID.outMax = cfg.speedPIDOutputLimit;
-  angleSetpoint = speedPID.compute(speedSetpoint, wheelSpeed, dt);
+  angleSetpoint = speedPID.compute(speedSetpoint, wheelSpeed, dt) + autotuneExcitation();
 
   // Angle loop. The PID drives (setpoint - pitch) to zero; when leaning forward
   // (pitch > setpoint) its output is negative, and the wheels must go forward.
@@ -203,5 +205,5 @@ void controlStep(float dt) {
   motorsSet(drive + steer, drive - steer);
 
   iste += angleError * angleError * dt;
-  autotuneStep(dt, angleError, angleOutput);
+  autotuneStep(dt, angleError);
 }

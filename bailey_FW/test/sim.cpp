@@ -28,6 +28,7 @@ SimWire Wire;
 #include "../bailey_FW.ino"
 #include "../autotune.ino"
 #include "../comms.ino"
+#include "../gains.ino"
 #include "../imu.ino"
 #include "../motors.ino"
 #include "../settings.ino"
@@ -48,6 +49,9 @@ struct Plant {
   double noiseDeg = 0.05;       // scales accelerometer and gyro noise
   double imuHeight = 0.12;      // m above the axle: it also feels the body's rotation
   double gyroBiasDps = 0.3;     // residual bias after the boot calibration
+  double sensorLag = 0.0048;    // s, MPU-6050 low-pass filter delay at DLPF_BW_42
+  double slip = 1.0;            // ground motion / wheel motion (< 1: wheels slipping)
+  double lagOmega = 0, lagFy = 0, lagFz = 9.81;
 
   double theta = 0, omega = 0;  // rad, + = leaning forward
   double vl = 0, vr = 0;        // wheel ground speed m/s
@@ -82,8 +86,8 @@ struct Plant {
     double k = 2 * M_PI * wheelRadius / stepsPerRev;
     stepperLeft->advance(dt);
     stepperRight->advance(dt);
-    al = (stepperLeft->speed * k - vl) / dt;
-    ar = (stepperRight->speed * k - vr) / dt;
+    al = (slip * stepperLeft->speed * k - vl) / dt;
+    ar = (slip * stepperRight->speed * k - vr) / dt;
 #endif
     if (held) {
       // Held in the air / on a stand: the body doesn't move, the wheels spin freely.
@@ -115,13 +119,19 @@ struct Plant {
     double t = theta + mountOffsetDeg * M_PI / 180;
     double fy = cos(t) * a + sin(t) * g;
     double fz = cos(t) * g - sin(t) * a;
-    const double accLsb = 16384 / g, gyroLsb = 65.5;
-    simAccel[0] = (int16_t)lround(noiseDeg * 0.02 * g * noise(rng) * accLsb);
-    simAccel[1] = (int16_t)lround((fy + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
-    simAccel[2] = (int16_t)lround((fz + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
-    simGyro[0] = (int16_t)lround(((held ? pickupRate : omega) * 180 / M_PI + gyroBiasDps + noiseDeg * 4 * noise(rng)) * gyroLsb);
-    simGyro[1] = (int16_t)lround(noiseDeg * 4 * noise(rng) * gyroLsb);
-    simGyro[2] = (int16_t)lround(noiseDeg * 4 * noise(rng) * gyroLsb);
+    double lagK = std::min(1.0, dt / sensorLag);
+    lagFy += (fy - lagFy) * lagK;
+    lagFz += (fz - lagFz) * lagK;
+    lagOmega += ((held ? pickupRate : omega) - lagOmega) * lagK;
+    // +/-4 g and +/-500 deg/s ranges; the real sensor clips at full scale.
+    const double accLsb = 8192 / g, gyroLsb = 65.5;
+    auto raw = [](double v) { return (int16_t)std::max(-32768.0, std::min(32767.0, std::round(v))); };
+    simAccel[0] = raw(noiseDeg * 0.02 * g * noise(rng) * accLsb);
+    simAccel[1] = raw((lagFy + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
+    simAccel[2] = raw((lagFz + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
+    simGyro[0] = raw((lagOmega * 180 / M_PI + gyroBiasDps + noiseDeg * 4 * noise(rng)) * gyroLsb);
+    simGyro[1] = raw(noiseDeg * 4 * noise(rng) * gyroLsb);
+    simGyro[2] = raw(noiseDeg * 4 * noise(rng) * gyroLsb);
   }
 };
 
@@ -190,6 +200,22 @@ static bool check(bool ok, const char *what) {
 }
 
 static void boot() {
+  // Plant variations from the environment (used by the tuning scripts).
+  if (getenv("SIM_TAU")) plant.motorTau = atof(getenv("SIM_TAU"));
+  if (getenv("SIM_L")) plant.effLength = atof(getenv("SIM_L"));
+  if (getenv("SIM_OFFSET")) plant.mountOffsetDeg = atof(getenv("SIM_OFFSET"));
+  if (getenv("SIM_NOISE")) plant.noiseDeg = atof(getenv("SIM_NOISE"));
+  if (getenv("SIM_STICTION")) plant.stictionPwm = atoi(getenv("SIM_STICTION"));
+  if (getenv("SIM_LAG")) plant.sensorLag = atof(getenv("SIM_LAG"));
+  if (getenv("SIM_IMU_HEIGHT")) plant.imuHeight = atof(getenv("SIM_IMU_HEIGHT"));
+  if (getenv("SIM_BIAS")) plant.gyroBiasDps = atof(getenv("SIM_BIAS"));
+  // Like a power cycle: runtime state back to power-on values (EEPROM persists).
+  autotuneAbort("reset");
+  motorsEnabled = false;
+  state = STATE_DISARMED;
+  throttleCmd = steerCmd = 0;
+  speedSetpoint = 0;
+  imuStarted = false;
   Serial.onLine = onLine;
   setup();
   // GAINS=aKp,aKi,aKd,sKp,sKi,sLimit[,trigger,aggFactor] overrides the defaults (used by tuning scripts).
@@ -207,12 +233,15 @@ static void boot() {
   plant.theta = 0;
 }
 
+double uprightReading = 0;
+
 // Hold the robot upright, switch motors on, release it tilted.
 static void startBalancing(double releaseDeg) {
   run(1.0);
   send("SCMD Motors 1");
   // Let go as soon as it starts balancing, like a person holding it would.
   while (state != STATE_BALANCING) run(0.001);
+  uprightReading = pitchRaw;   // what the IMU filter reads with the robot truly upright
   plant.theta = releaseDeg * M_PI / 180;
   plant.held = false;
 }
@@ -324,51 +353,140 @@ static bool scenarioFall() {
   return ok;
 }
 
-static bool scenarioAutotune() {
-  boot();
-  // Start from deliberately poor (but stable) gains so there is something to find.
-  cfg.anglePIDConKp *= 0.7;
-  cfg.anglePIDConKd *= 1.4;
-  startBalancing(0);
-  run(3);
-  float before[3] = { cfg.anglePIDConKp, cfg.anglePIDConKi, cfg.anglePIDConKd };
-  send("SCMD numParticles 6");
-  send("SCMD maxIterations 6");
-  send("SCMD SPOConfigEval 2000");
-  send("SCMD AUTOTUNE 1");
-  stats.reset();
-  run(6 * 6 * 2.6 + 10);
-  bool ok = check(!tuning, "autotune finished by itself");
-  ok &= check(state == STATE_BALANCING, "still balancing at the end");
-  int spoLines = 0;
-  double firstFit = -1, lastBest = -1;
+struct AtResult {
+  bool seen = false, accepted = false;
+  double L = 0, L1 = 0, L2 = 0, offset = 0, r2 = 0, before = 0, after = 0;
+};
+
+static AtResult lastAutotuneResult() {
+  AtResult r;
   for (auto &l : received) {
-    if (l.rfind("SPO,", 0) == 0) {
-      spoLines++;
-      double it, p, fit, best;
-      sscanf(l.c_str(), "SPO,%lf,%lf,%lf,%lf", &it, &p, &fit, &best);
-      if (firstFit < 0) firstFit = fit;
-      lastBest = best;
+    if (l.rfind("AT,RESULT,", 0) == 0) {
+      int acc;
+      r.seen = sscanf(l.c_str(), "AT,RESULT,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &acc, &r.L, &r.L1, &r.L2, &r.offset,
+                      &r.r2, &r.before, &r.after) == 8;
+      r.accepted = acc == 1;
     }
   }
-  ok &= check(spoLines == 36, "one SPO report per particle evaluation (36)");
-  ok &= check(lastBest <= firstFit, "best fitness is no worse than the starting gains");
-  printf("  falls %d, start gains fitness %.4f -> best %.4f\n", stats.falls, firstFit, lastBest);
-  printf("  gains Kp %.2f Ki %.2f Kd %.3f -> Kp %.2f Ki %.2f Kd %.3f\n", before[0], before[1], before[2],
-         cfg.anglePIDConKp, cfg.anglePIDConKi, cfg.anglePIDConKd);
-  bool reported = false;
-  for (auto &l : received) if (l == "EV,Autotune done") reported = true;
-  ok &= check(reported, "reports 'Autotune done'");
+  return r;
+}
+
+// One autotune run on a robot with the given true pendulum length and IMU offset.
+static bool autotuneCase(double length, double offsetDeg) {
+  plant = Plant();
+  received.clear();
+  boot();
+  plant.effLength = length;
+  plant.mountOffsetDeg = offsetDeg;
+  startBalancing(0);
+  run(4);
+  send("SCMD AUTOTUNE 1");
+  stats.reset();
+  run(35);
+  AtResult r = lastAutotuneResult();
+  printf("  L %.2f m, IMU reads %+.2f deg upright -> measured L %.3f (%.3f / %.3f), offset %+.2f, R2 %.2f, "
+         "score %.4f -> %.4f\n", length, uprightReading, r.L, r.L1, r.L2, r.offset, r.r2, r.before, r.after);
+  bool ok = check(r.seen && r.accepted && !autotuneRunning(), "result accepted");
+  ok &= check(fabs(r.L / length - 1) < 0.15, "length within 15 %");
+  ok &= check(fabs(r.offset - uprightReading) < 0.3, "zero within 0.3 deg of the upright reading");
+  ok &= check(fabs(cfg.pendulumLength - r.L) < 1e-3 && fabs(cfg.calibratedZeroAngle - r.offset) < 0.01,
+              "gains and zero applied");
+  ok &= check(stats.falls == 0 && state == STATE_BALANCING, "balanced throughout");
   return ok;
+}
+
+static bool scenarioAutotune() {
+#if MOTOR_TYPE == MOTOR_STEPPER
+  if (getenv("AT_L")) return autotuneCase(atof(getenv("AT_L")), 1.5);
+  bool ok = true;
+  ok &= autotuneCase(0.20, 1.5);
+  ok &= autotuneCase(0.12, -1.0);
+  ok &= autotuneCase(0.32, 2.5);
+
+  // Wheels slipping: the two length estimates disagree, nothing may change.
+  plant = Plant();
+  plant.slip = 0.6;
+  received.clear();
+  boot();
+  startBalancing(0);
+  run(4);
+  float kp = cfg.anglePIDConKp, zero = cfg.calibratedZeroAngle;
+  send("SCMD AUTOTUNE 1");
+  run(35);
+  AtResult r = lastAutotuneResult();
+  printf("  slipping wheels -> L %.3f / %.3f\n", r.L1, r.L2);
+  ok &= check(r.seen && !r.accepted, "slipping wheels: result rejected");
+  ok &= check(cfg.anglePIDConKp == kp && cfg.calibratedZeroAngle == zero, "slipping wheels: settings restored");
+  ok &= check(state == STATE_BALANCING, "slipping wheels: still balancing");
+
+  // Touching the throttle aborts and restores.
+  plant = Plant();
+  received.clear();
+  boot();
+  startBalancing(0);
+  run(4);
+  kp = cfg.anglePIDConKp;
+  send("SCMD AUTOTUNE 1");
+  run(10);
+  send("SCMD Throttle 50");
+  run(0.1);
+  bool aborted = false;
+  for (auto &l : received) if (l.rfind("E, autotune aborted: driving", 0) == 0) aborted = true;
+  ok &= check(aborted && !autotuneRunning() && cfg.anglePIDConKp == kp, "throttle aborts and restores");
+  return ok;
+#else
+  boot();
+  startBalancing(0);
+  run(2);
+  received.clear();
+  send("SCMD AUTOTUNE 1");
+  run(0.1);
+  bool refused = !received.empty() && received.back() == "E, AUTOTUNE needs stepper motors";
+  return check(refused && !autotuneRunning(), "DC build refuses to autotune");
+#endif
+}
+
+// Gains scaled to the true pendulum length (what the autotuner ends up with)
+// against the fixed defaults, on robots much shorter and taller than assumed.
+static bool scenarioScaling() {
+#if MOTOR_TYPE == MOTOR_STEPPER
+  bool ok = true;
+  for (double L : { 0.07, 0.12, 0.2, 0.32, 0.45 }) {
+    double rmsFixed = 0, rmsScaled = 0;
+    int fallsFixed = 0, fallsScaled = 0;
+    for (int scaled = 0; scaled < 2; scaled++) {
+      plant = Plant();
+      plant.effLength = L;
+      received.clear();
+      boot();
+      if (scaled) applyGainsForLength(L);
+      startBalancing(2);
+      stats.reset();
+      run(6);
+      plant.omega += 0.4;
+      run(4);
+      send("SCMD Throttle 100");
+      run(4);
+      send("SCMD Throttle 0");
+      run(5);
+      int falls = stats.falls + (state != STATE_BALANCING);
+      (scaled ? rmsScaled : rmsFixed) = rmsDeg();
+      (scaled ? fallsScaled : fallsFixed) = falls;
+    }
+    printf("  L %.2f m: default gains %s rms %.2f deg | scaled gains %s rms %.2f deg\n", L,
+           fallsFixed ? "FELL," : "ok,  ", rmsFixed, fallsScaled ? "FELL," : "ok,  ", rmsScaled);
+    char what[64];
+    snprintf(what, sizeof what, "scaled gains balance at L = %.2f m", L);
+    ok &= check(fallsScaled == 0, what);
+  }
+  return ok;
+#else
+  return check(true, "steppers only");
+#endif
 }
 
 // Used by tune_gains.py: plant and gains from the environment, prints one score line.
 static bool scenarioScore() {
-  if (getenv("SIM_TAU")) plant.motorTau = atof(getenv("SIM_TAU"));
-  if (getenv("SIM_L")) plant.effLength = atof(getenv("SIM_L"));
-  if (getenv("SIM_OFFSET")) plant.mountOffsetDeg = atof(getenv("SIM_OFFSET"));
-  if (getenv("SIM_NOISE")) plant.noiseDeg = atof(getenv("SIM_NOISE"));
-  if (getenv("SIM_STICTION")) plant.stictionPwm = atoi(getenv("SIM_STICTION"));
   boot();
   startBalancing(3);
   stats.reset();
@@ -511,6 +629,7 @@ int main(int argc, char **argv) {
     { "balance", scenarioBalance },   { "push", scenarioPush },
     { "drive", scenarioDrive },       { "fall", scenarioFall },
     { "autotune", scenarioAutotune }, { "commands", scenarioCommands },
+    { "scaling", scenarioScaling },
     { "eeprom", scenarioEeprom },     { "score", scenarioScore },
     { "demo", scenarioDemo },     { "motortest", scenarioMotorTest },
   };

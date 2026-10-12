@@ -7,7 +7,7 @@
 // Lines sent by the robot start with a tag:
 //   TH/T     telemetry header / values      PIDH/PID  PID header / values
 //   SYSH/SYS system header / values         EV        event (state changes, autotune)
-//   SPO      autotune progress              TEST      motor test result
+//   AT       autotune progress and result   TEST      motor test result
 //   ***      configuration dump             E         error
 
 #define LINE_LEN 64
@@ -66,7 +66,10 @@ static const char P_Maxthrottle[] PROGMEM = "Maxthrottle";
 static const char P_encoderCountsPerSecFull[] PROGMEM = "encoderCountsPerSecFull";
 static const char P_stepperMaxSpeed[] PROGMEM = "stepperMaxSpeed";
 static const char P_stepperMaxAccel[] PROGMEM = "stepperMaxAccel";
-static const char P_SPOspread[] PROGMEM = "SPOspread";
+static const char P_stepsPerRev[] PROGMEM = "stepsPerRev";
+static const char P_encoderCountsPerRev[] PROGMEM = "encoderCountsPerRev";
+static const char P_wheelDiameter[] PROGMEM = "wheelDiameter";
+static const char P_autotuneAmplitude[] PROGMEM = "autotuneAmplitude";
 
 static const FloatParam floatParams[] = {
   { P_speedPIDKp, &cfg.speedPIDKp, 10000, true },
@@ -92,7 +95,10 @@ static const FloatParam floatParams[] = {
   { P_encoderCountsPerSecFull, &cfg.encoderCountsPerSecFull, 1, false },
   { P_stepperMaxSpeed, &cfg.stepperMaxSpeed, 1, false },
   { P_stepperMaxAccel, &cfg.stepperMaxAccel, 1, false },
-  { P_SPOspread, &cfg.SPOspread, 100, false },
+  { P_stepsPerRev, &cfg.stepsPerRev, 1, false },
+  { P_encoderCountsPerRev, &cfg.encoderCountsPerRev, 1, false },
+  { P_wheelDiameter, &cfg.wheelDiameter, 1, false },
+  { P_autotuneAmplitude, &cfg.autotuneAmplitude, 100, false },
 };
 
 struct IntParam {
@@ -110,10 +116,6 @@ static const char P_motorLeftInvert[] PROGMEM = "motorLeftInvert";
 static const char P_motorRightInvert[] PROGMEM = "motorRightInvert";
 static const char P_encoderLeftInvert[] PROGMEM = "encoderLeftInvert";
 static const char P_encoderRightInvert[] PROGMEM = "encoderRightInvert";
-static const char P_numParticles[] PROGMEM = "numParticles";
-static const char P_maxIterations[] PROGMEM = "maxIterations";
-static const char P_SPOConfigEval[] PROGMEM = "SPOConfigEval";
-static const char P_SPOSettle[] PROGMEM = "SPOSettle";
 static const char P_debugSampleRate[] PROGMEM = "debugSampleRate";
 static const char P_telemetryPeriod[] PROGMEM = "telemetryPeriod";
 
@@ -126,10 +128,6 @@ static const IntParam intParams[] = {
   { P_motorRightInvert, &cfg.motorRightInvert, 1, 0, 1 },
   { P_encoderLeftInvert, &cfg.encoderLeftInvert, 1, 0, 1 },
   { P_encoderRightInvert, &cfg.encoderRightInvert, 1, 0, 1 },
-  { P_numParticles, &cfg.numParticles, 1, 2, MAX_PARTICLES },
-  { P_maxIterations, &cfg.maxIterations, 1, 1, 255 },
-  { P_SPOConfigEval, &cfg.SPOConfigEval, 2, 500, 60000 },
-  { P_SPOSettle, &cfg.SPOSettle, 2, 0, 10000 },
   { P_debugSampleRate, &cfg.debugSampleRate, 2, 50, 10000 },
   { P_telemetryPeriod, &cfg.telemetryPeriod, 2, 50, 10000 },
 };
@@ -173,11 +171,17 @@ static void setCommand(const char *arg, const char *value) {
   float v = atof(value);
 
   if (setParam(arg, value)) {
-    // done
+#if MOTOR_TYPE == MOTOR_STEPPER
+    // The gains are physical (gains.ino): if the speed scale changed, recompute them.
+    if (is(arg, P_stepperMaxSpeed) || is(arg, P_stepsPerRev) || is(arg, P_wheelDiameter)) {
+      applyGainsForLength(cfg.pendulumLength);
+      PIDParamTX();
+    }
+#endif
   } else if (is(arg, PSTR("Motors"))) {
     motorsEnabled = atoi(value) != 0;
     if (!motorsEnabled) {
-      autotuneStop(false);
+      autotuneAbort("motors off");
       motorsStop();
     }
   } else if (is(arg, PSTR("Steer"))) {
@@ -186,7 +190,16 @@ static void setCommand(const char *arg, const char *value) {
     throttleCmd = constrain(v, -100, 100);
   } else if (is(arg, PSTR("AUTOTUNE"))) {
     if (atoi(value)) autotuneStart();
-    else autotuneStop(true);
+    else autotuneAbort("stopped");
+  } else if (is(arg, PSTR("pendulumLength"))) {
+    // "SCMD pendulumLength 230": set gains for a measured length in mm (steppers).
+#if MOTOR_TYPE == MOTOR_STEPPER
+    float mm = constrain(v, 50, 600);
+    applyGainsForLength(mm / 1000.0f);
+    PIDParamTX();
+#else
+    Serial.println(F("E, pendulumLength needs stepper motors"));
+#endif
   } else if (is(arg, PSTR("SerialDebug"))) {
     cfg.debug = atoi(value) != 0;
   } else if (is(arg, PSTR("CalibrateZero"))) {
@@ -344,6 +357,8 @@ void SYSParamTX() {
 }
 
 void printConfig() {
+  Serial.print(F("*** pendulumLength = "));
+  Serial.println(cfg.pendulumLength, 3);
   for (uint8_t i = 0; i < COUNT(floatParams); i++) {
     Serial.print(F("*** "));
     Serial.print((const __FlashStringHelper *)floatParams[i].name);

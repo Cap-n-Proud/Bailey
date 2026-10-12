@@ -34,7 +34,8 @@ Structure
 | `imu.ino` | MPU-6050 read + complementary filter, any mounting orientation, zero offset |
 | `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
 | `comms.ino` | Serial commands, telemetry, PID/SYS lines |
-| `autotune.ino` | Particle swarm autotuner for the angle PID |
+| `autotune.ino` | Autotuner: measures pendulum length and IMU offset while balancing |
+| `gains.ino` | Gains from the pendulum length (physical units, scaled by dynamic similarity) |
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
 | `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
 
@@ -103,7 +104,9 @@ with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
      `motorRightMinimumSpeed` (PWM 0-255) to the value where each wheel just starts turning.
 5. **Save:** `SCMD SaveCfg 1`.
 6. **Balance:** `SCMD Motors 1`, hold the robot upright and let go once the wheels engage.
-7. **Tune** with the sliders, or `SCMD AUTOTUNE 1` while it balances (below), then `SCMD SaveCfg 1`.
+7. **Autotune** (steppers): `SCMD AUTOTUNE 1` while it balances (below), then `SCMD SaveCfg 1`.
+   This also replaces step 3, so a rough zero is enough to get it balancing. Fine-tune with the
+   sliders if you like.
 
 Keep the robot still while it boots: the gyro bias is measured then.
 
@@ -114,26 +117,70 @@ driving to stay up, redo step 3.
 Default gains
 -------------
 
-There are separate defaults for steppers and DC motors. They started from an LQR design and were
-then tuned in the simulator. Each set was checked across a range of assumptions, because the robot's
-mass distribution isn't in the CAD files: centre of mass 12-30 cm above the axle, tilt offsets of
-±2°, IMU noise, and (DC) motor response times of 40-150 ms. Geometry from `hardware/`: 94 mm
-wheels, 220 mm body, head with the Pi and camera on top. Treat them as a starting point, not a
-final tuning.
+**Steppers.** The gains live in physical units in `gains.ino` and are converted using
+`wheelDiameter`, `stepsPerRev` and `stepperMaxSpeed`. Changing those settings recomputes them, so
+you can change microstepping or wheels without retuning. They depend on one property of the robot,
+its effective pendulum length L: how high the mass sits above the axle, which sets how fast it
+falls. Robots that differ only in L behave identically with time scaled by √(L/g), so gains tuned
+once carry over exactly. The angle loop's Kp scales with √L, Ki stays constant and Kd scales with
+L; the speed loop's Kp scales with 1/√L and Ki with 1/L.
 
-Autotuner
----------
+The reference gains were tuned in the simulator for L = 0.2 m and are the defaults until the robot
+has been measured. In the simulator they balance robots from L = 7 cm to 45 cm, but are noticeably
+better once scaled to the true L. If you know L, set it with `SCMD pendulumLength <mm>`.
+Otherwise let the autotuner measure it.
 
-`SCMD AUTOTUNE 1` (robot balancing) runs a particle swarm search over the conservative angle gains
-(Kp, Ki, Kd) within ±`SPOspread` of the current values. Each candidate gets `SPOSettle` ms to
-settle, then is scored for `SPOConfigEval` ms on mean squared angle error plus a small motor
-effort term. `numParticles` x `maxIterations` candidates are tried (8 x 10 x 3.5 s = about 5 min
-by default). Progress lines: `SPO,<iteration>,<particle>,<score>,<best score>,<Kp>,<Ki>,<Kd>`.
+**DC motors.** Fixed defaults, checked in the simulator over a range of body heights, IMU offsets,
+noise and motor response times (40-150 ms).
 
-When it finishes, or on `SCMD AUTOTUNE 0`, the best gains are applied (send `SCMD SaveCfg 1` to
-keep them). If the robot falls, that candidate scores as bad, the best gains so far are restored,
-and the search continues once you stand the robot up again. After 3 falls it stops. `SCMD Motors 0`
-aborts and restores the gains from before the run.
+Geometry from `hardware/`: 94 mm wheels, 220 mm body, head with the Pi and camera on top. The
+mass distribution isn't in the CAD files, which is why L is measured rather than assumed.
+
+Autotuner (steppers)
+--------------------
+
+`SCMD AUTOTUNE 1` while the robot balances, with throttle and steer at 0. It takes about 30 s and
+**measures** the robot instead of trying gains on it. A robot on stepper wheels obeys
+
+```
+pitch'' = (g / L) · (pitch − offset) − (1 / L) · wheel acceleration
+```
+
+and everything in that equation is known except L and the IMU offset. The autotuner runs in
+three phases:
+
+1. **Baseline (6 s).** It balances on the current settings, scores how much the robot wobbles,
+   and measures the gyro's residual bias (balancing in place, the true average rate is 0).
+2. **Measure (18 s).** It adds a gentle wobble (two sines, about ±`autotuneAmplitude` = 0.7°) to
+   the pitch setpoint, so there is motion to measure. It then fits pitch'' = p1·pitch + p2 +
+   p3·acceleration by least squares. That gives **two independent estimates of L**, g/p1 and
+   −1/p3, plus the offset, −p2/p1. Before the fit:
+   * pitch is integrated from the gyro, because the accelerometer is fooled by the robot's own
+     acceleration;
+   * the wheel acceleration is delayed by 5 ms to line up with the MPU-6050's internal filter;
+   * every signal gets the same 3 Hz low-pass.
+3. **Verify (6 s).** It applies gains for the measured L and sets the measured offset as the new
+   zero, then scores the wobble again.
+
+The result is **rejected and everything restored** if:
+* the two L estimates disagree by more than 25% (wheels slipping, steps skipped);
+* the model explains less than 60% of the motion;
+* L is outside 5-60 cm;
+* the signs come out wrong (a direction setting is wrong);
+* the robot balances clearly worse on the new settings.
+
+Driving, steering, `Motors 0`, `AUTOTUNE 0`, a fall or a tilt error above 6° aborts and restores.
+Send `SCMD SaveCfg 1` to keep a good result.
+
+Output: `AT,BASELINE` / `AT,MEASURE` / `AT,VERIFY`, then
+`AT,RESULT,<accepted>,<L>,<L from g/p1>,<L from −1/p3>,<zero>,<R²>,<wobble before>,<wobble after>`
+(wobble = mean squared angle error, deg²). The web server logs these and shows them in the UI.
+
+In the simulator (`test/`) it measures L within about 1-5% for robots of 12-45 cm (about 15% at
+8 cm) and the zero within 0.2°. It rejects slipping wheels. With four times the expected IMU noise,
+L comes out about 20% high, and the resulting gains still balance well.
+
+DC motors: not supported. The wheel acceleration from the encoders isn't clean enough for the fit.
 
 Commands
 --------
@@ -145,17 +192,17 @@ Commands
 | `speedPIDKp`, `speedPIDKi`, `speedPIDKd` | gain x 10000 (UI sliders) |
 | `anglePIDConKp/Ki/Kd`, `anglePIDAggKp/Ki/Kd` | gain x 100 |
 | `TriggerAngleAggressive`, `calibratedZeroAngle` | deg x 100 |
-| `speedPIDMoveFactor`, `speedFilter`, `speedFeedForward`, `SPOspread` | fraction x 100 |
-| `anglePIDOutputLimit` (%), `fallAngle` (deg), `speedPIDOutputLimit` (deg), `speedRamp` (%/s), `Maxsteer` (%), `Maxthrottle` (% of full speed), `encoderCountsPerSecFull`, `stepperMaxSpeed` (steps/s), `stepperMaxAccel` (steps/s²) | plain number |
+| `speedPIDMoveFactor`, `speedFilter`, `speedFeedForward`, `autotuneAmplitude` (deg) | value x 100 |
+| `anglePIDOutputLimit` (%), `fallAngle` (deg), `speedPIDOutputLimit` (deg), `speedRamp` (%/s), `Maxsteer` (%), `Maxthrottle` (% of full speed), `encoderCountsPerSecFull`, `encoderCountsPerRev`, `stepperMaxSpeed` (steps/s), `stepperMaxAccel` (steps/s²), `stepsPerRev` (incl. microstepping), `wheelDiameter` (mm) | plain number |
 | `motorLeftMinimumSpeed`, `motorRightMinimumSpeed` | PWM 0-254 |
 | `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
-| `numParticles`, `maxIterations`, `SPOConfigEval` (ms), `SPOSettle` (ms), `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
+| `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
 | `Motors`, `AUTOTUNE`, `SerialDebug` | 0/1 |
 | `Throttle`, `Steer` | -100..100 |
-| `CalibrateZero 1`, `MotorTest <-100..100>`, `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
+| `CalibrateZero 1`, `MotorTest <-100..100>`, `pendulumLength <mm>` (steppers: gains for that length), `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
 
 Lines from the robot start with a tag: `T`/`TH` telemetry, `PID`/`PIDH`, `SYS`/`SYSH`, `EV` events,
-`SPO` autotune progress, `TEST` motor test, `***` config dump, `E` errors.
+`AT` autotune progress/result, `TEST` motor test, `***` config dump, `E` errors.
 
 Simulator
 ---------

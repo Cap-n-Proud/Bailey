@@ -11,9 +11,8 @@
 #include "config.h"
 
 #define SETTINGS_MAGIC   0xBA17
-#define SETTINGS_VERSION 3
+#define SETTINGS_VERSION 4
 #define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
-#define MAX_PARTICLES    12
 
 // Everything that can be changed at runtime with "SCMD <name> <value>".
 // Plain old data only, so it can be stored in EEPROM byte by byte.
@@ -48,19 +47,18 @@ struct Settings {
   float encoderCountsPerSecFull;  // DC: encoder counts/s at full power (sets the speed scale)
   float stepperMaxSpeed;          // stepper: steps/s at 100 %
   float stepperMaxAccel;          // stepper: steps/s^2
-
+  float stepsPerRev;              // stepper: steps per wheel turn, including microstepping
+  float encoderCountsPerRev;      // DC: encoder counts per wheel turn
+  float wheelDiameter;            // mm
   // Orientation of IMU, motors and encoders. Fix these instead of rewiring.
   uint8_t imuAxis;                // gyro axis the robot pitches around: 0 = X, 1 = Y, 2 = Z
   uint8_t imuInvert;              // 1 = pitch reads negative when leaning forward
   uint8_t motorLeftInvert, motorRightInvert;
   uint8_t encoderLeftInvert, encoderRightInvert;
 
-  // Autotuner (particle swarm on the conservative angle gains)
-  uint8_t numParticles;
-  uint8_t maxIterations;
-  uint16_t SPOConfigEval;         // ms each particle is evaluated
-  uint16_t SPOSettle;             // ms to settle after changing gains, not scored
-  float SPOspread;                // search +/- this fraction around the gains at start
+  // Robot model and autotuner
+  float pendulumLength;           // m, effective pendulum length the gains were computed for
+  float autotuneAmplitude;        // deg, wobble added to the pitch setpoint while measuring
 
   // Telemetry / debug
   uint8_t debug;                  // 1 = human-readable debug output instead of telemetry
@@ -117,6 +115,8 @@ enum RobotState {
   STATE_FALLEN   = 3
 };
 
+enum AutotunePhase { AT_IDLE, AT_BASELINE, AT_MEASURE, AT_VERIFY };
+
 // settings.ino
 void loadDefaultSettings();
 bool loadSettings();
@@ -150,8 +150,14 @@ void printConfig();
 
 // autotune.ino
 void autotuneStart();
-void autotuneStop(bool applyBest);
-void autotuneStep(float dt, float angleError, float motorOutput);
+void autotuneAbort(const char *reason);
+float autotuneExcitation();
+void autotuneStep(float dt, float angleError);
 void autotuneOnFall();
+bool autotuneRunning();
+
+// gains.ino
+float fullSpeedMps();
+void applyGainsForLength(float length);
 
 #endif

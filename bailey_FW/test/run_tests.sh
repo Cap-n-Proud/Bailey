@@ -9,7 +9,7 @@ $CXX $FLAGS -DMOTOR_TYPE=2 -o sim_stepper sim.cpp
 
 fail=0
 for sim in sim_dc sim_stepper; do
-  for s in balance push drive fall autotune commands eeprom motortest; do
+  for s in balance push drive fall autotune scaling commands eeprom motortest; do
     printf '== %s ' "$sim"
     ./$sim $s || fail=1
   done
