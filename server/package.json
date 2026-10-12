@@ -1,0 +1,25 @@
+{
+  "name": "bailey-server",
+  "version": "2.0.0",
+  "description": "Raspberry Pi side of the Bailey self-balancing robot: web UI, video and the serial link to the Arduino",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "sim": "node src/server.js --sim",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "serialport": "^13.0.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "license": "MIT"
+}

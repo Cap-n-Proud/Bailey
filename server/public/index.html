@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a1a19">
+  <title>Bailey</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Bailey</h1>
+    <span class="chip" id="link" title="Serial link to the Arduino">robot: …</span>
+    <span class="chip state" id="state" title="OFF: motors off · WAIT: hold it upright · BAL: balancing · FALL: fallen">—</span>
+    <span class="meta" id="firmware"></span>
+    <span class="spacer"></span>
+    <span class="meta" id="piTemp" title="Raspberry Pi CPU temperature"></span>
+  </header>
+
+  <main class="grid">
+    <!-- Video + HUD -->
+    <section class="card video-card">
+      <div class="video" id="video">
+        <img id="videoImg" alt="">
+        <div class="video-off" id="videoOff">Video off</div>
+        <div class="hud">
+          <div class="hud-pitch"><span id="hudPitch">–</span>°</div>
+          <div class="horizon"><div class="horizon-line" id="horizon"></div></div>
+          <div class="hud-heading">hdg <span id="hudHeading">–</span>°</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="videoBtn">Video on</button>
+        <a class="button ghost" href="snapshot.jpg" target="_blank" rel="noopener">Snapshot</a>
+        <span class="meta" id="cameraStatus"></span>
+      </div>
+    </section>
+
+    <!-- Driving -->
+    <section class="card drive-card">
+      <div class="row">
+        <button class="big" id="motorsBtn">Motors on</button>
+        <button class="big danger" id="stopBtn" title="Motors off (Space)">Stop</button>
+      </div>
+      <div class="joystick" id="joystick" aria-label="Drive: drag, or use the arrow keys">
+        <div class="knob" id="knob"></div>
+      </div>
+      <p class="hint">Drag to drive, or use the arrow keys. Release to stop.</p>
+    </section>
+
+    <!-- Status + charts -->
+    <section class="card">
+      <h2>Live</h2>
+      <div class="stats">
+        <div><span class="label">Pitch</span><span class="value" id="pitch">–</span></div>
+        <div><span class="label">Wheel speed</span><span class="value" id="speed">–</span></div>
+        <div><span class="label">Loop time</span><span class="value" id="loopTime" title="Worst control loop time since the last telemetry; must stay under 5000 µs">–</span></div>
+        <div><span class="label">Wobble</span><span class="value" id="wobble" title="Integral of squared angle error per telemetry period (deg²·s)">–</span></div>
+      </div>
+      <figure class="chart">
+        <figcaption>Pitch (°), last 20 s</figcaption>
+        <canvas id="pitchChart" height="110"></canvas>
+      </figure>
+      <figure class="chart">
+        <figcaption>Wheel speed (% of full), last 20 s</figcaption>
+        <canvas id="speedChart" height="110"></canvas>
+      </figure>
+    </section>
+
+    <!-- Setup & tuning actions -->
+    <section class="card">
+      <h2>Tuning</h2>
+      <div class="autotune" id="autotune">
+        <button id="autotuneBtn">Autotune</button>
+        <div class="autotune-status">
+          <div id="autotuneText">Measures the robot while it balances (about 30 s). Throttle must be at 0.</div>
+          <div class="progress"><div id="autotuneBar"></div></div>
+        </div>
+      </div>
+      <div class="row wrap">
+        <button id="calibrateBtn" title="Hold the robot at its balance point first">Calibrate zero</button>
+        <button id="motorTestBtn" title="Motors off, wheels off the ground: runs both wheels forward at 30 % for 1 s">Motor test</button>
+        <button id="saveBtn">Save to EEPROM</button>
+        <button class="ghost" id="defaultsBtn">Load defaults</button>
+      </div>
+      <form class="length" id="lengthForm">
+        <label for="lengthInput">Pendulum length</label>
+        <input id="lengthInput" type="number" min="50" max="600" step="1" placeholder="mm">
+        <span class="meta">mm</span>
+        <button type="submit">Set gains</button>
+      </form>
+      <details>
+        <summary>Gains</summary>
+        <table class="gains" id="gainsTable">
+          <thead><tr><th></th><th>Kp</th><th>Ki</th><th>Kd</th></tr></thead>
+          <tbody>
+            <tr><th>Angle</th><td><input data-gain="anglePIDConKp"></td><td><input data-gain="anglePIDConKi"></td><td><input data-gain="anglePIDConKd"></td></tr>
+            <tr><th>Angle (far)</th><td><input data-gain="anglePIDAggKp"></td><td><input data-gain="anglePIDAggKi"></td><td><input data-gain="anglePIDAggKd"></td></tr>
+            <tr><th>Speed</th><td><input data-gain="speedPIDKp"></td><td><input data-gain="speedPIDKi"></td><td><input data-gain="speedPIDKd"></td></tr>
+          </tbody>
+        </table>
+        <div class="row wrap">
+          <label>Far beyond <input data-gain="TriggerAngleAggressive"> °</label>
+          <label>Zero <input data-gain="calibratedZeroAngle"> °</label>
+        </div>
+        <p class="hint">Changes apply when you leave a field. Units: angle gains in % motor per degree, speed gains in degrees per % speed.</p>
+      </details>
+    </section>
+
+    <!-- Events -->
+    <section class="card">
+      <h2>Events</h2>
+      <ol class="events" id="events"></ol>
+    </section>
+
+    <!-- Console -->
+    <section class="card console-card">
+      <h2>Console</h2>
+      <div class="console" id="console" role="log"></div>
+      <form class="row" id="consoleForm">
+        <input id="consoleInput" placeholder="SCMD name value  ·  READ printConfig" autocomplete="off" spellcheck="false">
+        <button type="submit">Send</button>
+      </form>
+      <div class="row wrap">
+        <button class="ghost" data-read="printConfig">Print config</button>
+        <button class="ghost" data-read="RemoteInit">Reload headers</button>
+      </div>
+    </section>
+
+    <!-- Pi -->
+    <section class="card">
+      <h2>Raspberry Pi</h2>
+      <div class="stats">
+        <div><span class="label">CPU temp</span><span class="value" id="sysTemp">–</span></div>
+        <div><span class="label">Load</span><span class="value" id="sysLoad">–</span></div>
+        <div><span class="label">Memory</span><span class="value" id="sysMem">–</span></div>
+        <div><span class="label">Address</span><span class="value small" id="sysAddr">–</span></div>
+      </div>
+      <div class="row wrap">
+        <button id="recordBtn">Record telemetry</button>
+        <span class="meta" id="recordStatus"></span>
+      </div>
+      <div class="row wrap">
+        <button class="ghost danger" id="rebootBtn">Reboot Pi</button>
+        <button class="ghost danger" id="shutdownBtn">Shut down Pi</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

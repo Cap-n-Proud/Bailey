@@ -1,32 +1,18 @@
-#!/bin/bash
-
-#Parse data from the json config file
-remoteRepository="https://github.com/pfnegrini/Bailey.git"
-installPath="$(ruby -rjson -e 'j = JSON.parse(File.read("/home/pi/Bailey/server/app/config.json")); puts j["server"]["installPath"]')"
-#Check installed release from config file
-installedVersion="$(ruby -rjson -e 'j = JSON.parse(File.read("/home/pi/Bailey/server/app/config.json")); puts j["server"]["version"]')"
-
-updateDir="/tmp/update"
-
-#Check current release
-latestVersion="$(git ls-remote $remoteRepository | grep -o 'refs/tags/[0-9]*' | sort -V | head | grep -o '[^\/]*$' | tail -1)" 
-
-repositoryFile="https://github.com/pfnegrini/Bailey/archive/"$latestVersion".tar.gz"
-
-echo current version $installedVersion latest $latestVersion
-if [ "$latestVersion" -gt "$installedVersion" ]; 
-then
-    
-    echo Need update
-    mkdir $updateDir
-    echo downloading repository $repositoryFile
-    wget  $repositoryFile -P $updateDir
-    rm -rf $installPath
-    mkdir $installPath
-    tar -xvf $updateDir/$latestVersion.tar.gz -C $installPath --strip 1
-    rm -rf $updateDir
-    
-    else
-
-    echo Software up-to-date
+#!/usr/bin/env bash
+# Updates the Bailey server from git and restarts it. The firmware is updated
+# separately with install/flash-firmware.sh.
+set -euo pipefail
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO"
+before="$(git rev-parse HEAD)"
+git pull --ff-only
+if [ "$before" = "$(git rev-parse HEAD)" ]; then
+  echo "Already up to date."
+  exit 0
+fi
+(cd server && npm ci --omit=dev)
+sudo systemctl restart bailey
+echo "Updated to $(git log -1 --format='%h %s')."
+if ! git diff --quiet "$before" HEAD -- bailey_FW; then
+  echo "The firmware changed too: run install/flash-firmware.sh to update the Arduino."
 fi
