@@ -281,13 +281,18 @@ We store sensor data in arrays.
         //console.log(data);
         //this emits raw data from Arduino for debug purposes
         eventEmitter.emit('serialData', data);
+
+        // Dispatch on the first field only: matching anywhere in the line made
+        // e.g. "SCMD Throttle 50" or the PIDH header overwrite the telemetry.
+        data = data.trim();
+        var tag = data.split(SEPARATOR)[0].split(' ')[0];
         
-        if (data.indexOf('SCMD') !== -1)
+        if (tag === 'SCMD')
 	{
           eventEmitter.emit('CMDecho', data);  
         }
             
-        if (data.indexOf('T') !== -1)
+        if (tag === 'T')
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
@@ -307,7 +312,7 @@ We store sensor data in arrays.
 	}
 	
 	//"TH" means we are receiving Telemetry Headers
-        if (data.indexOf('TH') !== -1)
+        if (tag === 'TH')
 	{
           TelemetryHeader = data.split(SEPARATOR);
 	  var arrayLength = TelemetryHeader.length;
@@ -320,7 +325,7 @@ We store sensor data in arrays.
 	  //eventEmitter.emit('log', data);
 	}
 	
-	if (data.indexOf('SYSH') !== -1)
+	if (tag === 'SYSH')
 	{
 	  ArduSysHeader = data.split(SEPARATOR);
 	  var arrayLength = ArduSysHeader.length;
@@ -335,12 +340,12 @@ We store sensor data in arrays.
 	 
         }
 	
-	if (data.indexOf('SYS') !== -1)
+	if (tag === 'SYS')
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
 	  
-	  for (var i in Telemetry) {
+	  for (var i in ArduSys) {
 	    ArduSys[i] = tokenData[j];
 	    j++;
 	    //console.log(i + ' ' + Telemetry[i]);
@@ -349,7 +354,7 @@ We store sensor data in arrays.
 	  //eventEmitter.emit('log', data);
 	}
 	
-        if (data.indexOf('PID') !== -1)
+        if (tag === 'PID')
 	{
 	  var tokenData = data.split(SEPARATOR);
 	  var j = 0;
@@ -366,7 +371,7 @@ We store sensor data in arrays.
 
 	}
 	
-        if (data.indexOf('PIDH') !== -1)
+        if (tag === 'PIDH')
 	{
           PIDHeader = data.split(SEPARATOR);
           var arrayLength = PIDHeader.length;
@@ -381,7 +386,7 @@ We store sensor data in arrays.
 	
 	//Change the first word to be 'ArduConfig'
 	//If the first word is '***' prints in the server console. Used to debug the config from Arduino
-	if (data.indexOf('***') !== -1)
+	if (data.indexOf('***') === 0)
 	{
 	  console.log(data);
 	  log.info('Configuration received from Arduino: ' + data);
@@ -389,7 +394,7 @@ We store sensor data in arrays.
 	}
 	
 	//Handle errors from Arduino
-	if (data.indexOf('E') !== -1)
+	if (tag === 'E')
 	{
           log.error('ERROR: ' + data);
         }
@@ -397,7 +402,7 @@ We store sensor data in arrays.
 	
 	//IS THIS SILL RELEVANT?
 	//Get the header for the object that stores telemetry data
-	if (data.indexOf('HEADER') !== -1)
+	if (tag === 'HEADER')
 	{
 	  TelemetryHeader = data.split(SEPARATOR);
 	  var arrayLength = TelemetryHeader.length;

@@ -1,403 +1,209 @@
-// Check this out https://github.com/adafruit/AccelStepper.git
-// https://www.pjrc.com/teensy/td_libs_AccelStepper.html
-//http://42bots.com/tutorials/bipolar-stepper-motor-control-with-arduino-and-an-h-bridge/
-//------------------ Libraries ------------------
+// Bailey self-balancing robot firmware.
+//
+// Control structure (runs at a fixed 200 Hz, see CONTROL_PERIOD_US):
+//
+//   throttle -> speed setpoint -> [speed PID] -> pitch setpoint -> [angle PID] -> motors
+//                                     ^ wheel speed (encoders)       ^ pitch (IMU)
+//
+// Sign convention used everywhere: pitch > 0 means leaning forward, a positive
+// motor command drives the robot forward and a positive wheel speed means moving
+// forward. Use the imu*/motor*/encoder*Invert settings to make the hardware match.
 
-
-//#define DEBUG
-
-#include "FreeIMU.h"
 #include <Wire.h>
 #include <SPI.h>
+#include <EEPROM.h>
 #include <I2Cdev.h>
 #include <MPU60X0.h>
-#define M_PI 3.14159265358979323846f
 #include <MS561101BA.h>
 #include <HMC58X3.h>
-#include <Wire.h> // for i2c
-#include <PID_v1.h> // https://github.com/br3ttb/Arduino-PID-Library.git
-#include <TimedAction.h> // for updating sensors and debug http://bit.ly/pATDBi http://playground.arduino.cc/Code/TimedAction
-#include <EEPROM.h> // for storing configuraion
-//#include <avr/wdt.h> // watchdog http://savannah.nongnu.org/projects/avr-libc/
-//#include <KalmanFilter.h> // github.com/nut-code-monkey/KalmanFilter-for-Arduino
-// Try also: https://github.com/TKJElectronics/KalmanFilter.git
-#include <AccelStepper.h> //https://github.com/adafruit/AccelStepper.git
+#include "FreeIMU.h"
+#include "bailey.h"    // must come before the MOTOR_TYPE checks below
+#if MOTOR_TYPE == MOTOR_DC
+#include <Encoder.h>   // https://www.pjrc.com/teensy/td_libs_Encoder.html
+#endif
 
-#define SERIALCOMMAND_HARDWAREONLY 1
-#include <SerialCommand.h> // https://github.com/kroimon/Arduino-SerialCommand.git
+Settings cfg;
+Pid anglePID;
+Pid speedPID;
 
+// Sensors
+float ypr[3];                 // yaw, pitch, roll from the IMU (deg)
+float pitch = 0;              // balance angle relative to the calibrated zero (deg)
+float pitchRaw = 0;           // balance angle as read from the IMU (deg)
+float pitchRate = 0;          // deg/s
+float leftSpeed = 0, rightSpeed = 0;   // % of full speed
+float wheelSpeed = 0;         // filtered average, input of the speed PID
 
-//------------------ Constants ------------------
-#define TO_RAD(x) (x * 0.01745329252)  // *pi/180
-#define TO_DEG(x) (x * 57.2957795131)  // *180/pi
-#define speedMultiplier 1
-#define SERIAL_BAUD 38400
-#define CONFIG_START 32 //EEPROM address to start the config
+// Control
+float angleSetpoint = 0;
+float angleOutput = 0;        // % motor command from the angle PID
+float speedSetpoint = 0;
+float steerCmd = 0;           // remote input, -100..100
+float throttleCmd = 0;        // remote input, -100..100
+bool motorsEnabled = false;
+RobotState state = STATE_DISARMED;
+unsigned long uprightSince = 0;
+unsigned long motorTestUntil = 0;
+float motorTestPower = 0;
 
-/* Configutation parameters */
-struct Configuration {
-  String FirmwareVersion;
+// Statistics
+float iste = 0;               // integral of squared angle error since the last telemetry line
+unsigned long maxLoopUs = 0;
+unsigned long lastControlUs = 0;
+char lastEvent[32] = "Boot";
 
-  double speedPIDKp;
-  double speedPIDKi;
-  double speedPIDKd;
-  double speedPIDMoveFactor;
-  double speedPIDOutputLowerLimit;
-  double speedPIDOutputHigherLimit;
-  double anglePIDAggKp;
-  double anglePIDAggKi;
-  double anglePIDAggKd;
-  double anglePIDConKp;
-  double anglePIDConKi;
-  double anglePIDConKd;
-  double anglePIDOutputLowerLimit;
-  double anglePIDOutputHigherLimit;
-  double TriggerAngleAggressive;
-  double calibratedZeroAngle;
-  uint8_t anglePIDSampling;
-  uint8_t speedPIDSampling;
+void setEvent(const char *event) {
+  strncpy(lastEvent, event, sizeof(lastEvent) - 1);
+  lastEvent[sizeof(lastEvent) - 1] = 0;
+  Serial.print(F("EV,"));
+  Serial.println(lastEvent);
+}
 
-  double angleKalmanFilterR;
-  uint8_t angleSensorSampling;
-  uint8_t motorSpeedSensorSampling;
-  double speedKalmanFilterR;
-
-  int MotorLeftENABLEA;
-  int MotorLeftIN1;
-  int MotorLeftIN2;
-  int MotorRightENABLEA;
-  int MotorRightIN1;
-  int MotorRightIN2;
-  int leftEncoder1;
-  int leftEncoder2;
-  int rightEncoder1;
-  int rightEncoder2;
-
-  double steerGain;
-  double throttleGain;
-  double Maxsteer;
-  double Maxthrottle;
-  uint8_t motorLeftMinimumSpeed;
-  uint8_t motorRightMinimumSpeed;
-  int motorsON;
-
-  int numParticles;
-  double maxInteractions;
-  int SPOConfigEval;
-  boolean debugSPO;
-  double SPOspread = 0.10;
-
-  int commandDelay;
-  //int speakerPin;
-
-  boolean debug;
-  uint8_t debugLevel;
-  uint8_t debugSampleRate;
-  uint8_t speedPIDOutputDebug;
-  uint8_t speedPIDInputDebug;
-  uint8_t speedKalmanFilterDebug;
-  uint8_t speedRawDebug;
-  uint8_t speedMovingAvarageFilter2Debug;
-  uint8_t anglePIDSetpointDebug;
-  uint8_t anglePIDInputDebug;
-  uint8_t anglePIDOutputDebug;
-  uint8_t angleRawDebug;
-  uint8_t  activePIDTuningDebug;
-};
-Configuration configuration;
-byte b[sizeof(Configuration)];
-
-double UserControl[1]; //Steer, Throttle
-// float Thr = 0; //CHECK IF NEEDED
-
-void setConfiguration(boolean force) {
-  /* Flash is erased every time new code is uploaded. Write the default configuration to flash if first time */
-  // running for the first time?
-  uint8_t codeRunningForTheFirstTime = EEPROM.read(CONFIG_START); // flash bytes will be 255 at first run
-  if (codeRunningForTheFirstTime || force) {
-    if (configuration.debug) {
-      Serial.print("No config found, defaulting ");
-    }
-    /* First time running, set defaults */
-    configuration.FirmwareVersion = "1.2";
-    configuration.speedPIDOutputLowerLimit = -10.00; //Default was -5
-    configuration.speedPIDOutputHigherLimit = 10.00;
-
-    configuration.anglePIDConKp = 8.80;
-    configuration.anglePIDConKi = 2.21;
-    configuration.anglePIDConKd = 0.975;
-    configuration.speedPIDMoveFactor = 0.7;
-
-    configuration.anglePIDAggKp = 12.70;
-    configuration.anglePIDAggKi = 3.5;
-    configuration.anglePIDAggKd = 1.951;
-
-    configuration.speedPIDKp = 0.3854;
-    configuration.speedPIDKi = 0.1374;
-    configuration.speedPIDKd = 0.00245;
-    configuration.anglePIDOutputLowerLimit = -100;
-    configuration.anglePIDOutputHigherLimit = 100;
-
-    configuration.MotorLeftENABLEA = 8;
-    configuration.MotorLeftIN1 = 9;
-    configuration.MotorLeftIN2 = 10;
-    configuration.MotorRightENABLEA = 11;
-    configuration.MotorRightIN1 = 12;
-    configuration.MotorRightIN2 = 13;
-    configuration.leftEncoder1 = 2;
-    configuration.leftEncoder2 = 4;
-    configuration.rightEncoder1 = 3;
-    configuration.rightEncoder2 = 5;
-
-    configuration.motorLeftMinimumSpeed = 55;//40;
-    configuration.motorRightMinimumSpeed = 58;//44;
-    configuration.steerGain = 1;
-    configuration.throttleGain = 1;
-    configuration.Maxsteer = 20; //Max allowed percentage difference. Up to the remote to provide the right scale.
-    configuration.Maxthrottle = 6; //Max speed expressed in inclination degrees. Up to the remote to provide the right scale.
-
-    configuration.motorsON = 0;
-    configuration.debug = 0;
-
-    configuration.TriggerAngleAggressive = 3.50;
-    configuration.calibratedZeroAngle = 1.8;
-
-    configuration.anglePIDSampling = 10;
-    configuration.speedPIDSampling = 10;
-
-    configuration.angleKalmanFilterR = 10.00;
-    configuration.angleSensorSampling = 5;
-    configuration.motorSpeedSensorSampling = 5;
-    configuration.speedKalmanFilterR = 20.00;
-
-    configuration.maxInteractions = 30;
-    configuration.numParticles = 20;
-    configuration.SPOConfigEval = 2000;
-    configuration.debugSPO = false;
-    //Define a percentage around the known stable values
-    configuration.SPOspread = 0.10;
-
-    configuration.commandDelay = 5;
-    configuration.debugLevel = 0;
-    configuration.debugSampleRate = 1000;
-    //  configuration.speedPIDSetpointDebug = 1;
-    configuration.speedPIDOutputDebug = 1;
-    configuration.speedPIDInputDebug = 1;
-    configuration.speedKalmanFilterDebug = 1;
-    configuration.speedRawDebug = 1;
-    configuration.speedMovingAvarageFilter2Debug = 0;
-    configuration.anglePIDSetpointDebug = 1;
-    configuration.anglePIDInputDebug = 1;
-    configuration.anglePIDOutputDebug = 1;
-    configuration.angleRawDebug = 1;
-    configuration.activePIDTuningDebug = 1;
-    //configuration.speakerPin = 13;
-
-    saveConfig();
-    delay(100);
-  }
-  else {
-    if (configuration.debug)
-      Serial.println("Config found");
-    loadConfig();
-  }
-};
-
-//------------------ Definitions MOTORS ------------------
-
-//------------------ Definitions IMU  ------------------
-String SEPARATOR = ","; //Used as separator for telemetry
-float ypr[3];
-float altimeter; // yaw pitch roll
-float imuValues[6];
-float pitch, roll, yaw, prev_pitch, prev_yaw, prev_roll;
-float pitchd1, pitchd2;
-
-
-// Set the FreeIMU object
-FreeIMU my3IMU = FreeIMU();
-
-float speedKalmanFiltered = 0;
-float speedFIRFiltered = 0;
-float dISTEKalmanFiltered = 0;
-
-SerialCommand SCmd;   // The SerialCommand object
-
-long StartL = 0, LoopT = 0, StartL2 = 0, TxLoopTime = 0;
-
-String LastEvent = "";
-String PIDConfigType = "";
-
-// PID variables
-double anglePIDSetpoint, anglePIDInput, anglePIDOutput;
-double speedPIDInput, speedPIDOutput, speedPIDSetpoint;
-double anglePIDInputFiltered;
-double ISTE = 0, dISTE = 0;
-int AUTOTUNE = 0;
-
-// The cascading PIDs. The tunings are updated from the remote
-PID anglePID(&anglePIDInput, &anglePIDOutput, &anglePIDSetpoint, 0, 0, 0, DIRECT);
-PID speedPID(&speedPIDInput, &speedPIDOutput, &speedPIDSetpoint, 0, 0, 0, DIRECT);
-
-//Init the timers
-// These take care of the timing of things
-TimedAction debugTimedAction = TimedAction(configuration.debugSampleRate, debugEverything); //Print debug info
-//TimedAction updateMotorSpeedTimedAction = TimedAction(100, updateMotorSpeeds); //
-//ADD HERE A TIMED ACTIONS FOR SENSORS
-//TimedAction remoteControlWatchdogTimedAction = TimedAction(5000, stopRobot);
-
-//Reads serial for commands
-TimedAction RemoteReadTimedAction = TimedAction(250, RemoteRead);
-
-//Reads serial for commands
-TimedAction ReadIMUTimedAction = TimedAction(100, ReadIMU);
-
-//Upload telemetry data
-TimedAction TelemetryTXTimedAction = TimedAction(250, TelemetryTX);
-
-
-
-//------------------ Setup ------------------
 void setup() {
-  //pinMode(configuration.speakerPin, OUTPUT);
-
   Serial.begin(SERIAL_BAUD);
-  delay(50);
 
-  // Load config from eeprom
-  setConfiguration(true);
-  // init i2c and IMU
-  delay(100);
+  if (!loadSettings()) {
+    loadDefaultSettings();
+    saveSettings();
+  }
+
+  motorsSetup();
+  motorsStop();
+
+  // Derivative low-pass at 200 Hz: 0.3 -> ~11 Hz cutoff, keeps IMU noise out of the D term.
+  anglePID.dFilter = 0.3f;
+  speedPID.dFilter = 0.2f;
+  anglePID.reset();
+  speedPID.reset();
+
   Wire.begin();
+  imuSetup();   // keep the robot still: the gyro is calibrated here
 
-  //Init control systems
-  controlConfig();
-  // motorsSetup();
-  // Filters
-  // speedKalmanFilter.setState(0);
-  // balanceKalmanFilter.setState(0);
-  // dISTEKalmanFilter.setState(0);
-  //float coefficients[] = {
-  //  1,1,1,1,1,1,1,1,1              };
-  //speedMovingAvarageFilter2.setCoefficients(coefficients);
-  //speedMovingAvarageFilter2.setNumberOfTaps(9);
-  //speedMovingAvarageFilter2.setGain((float) (1/9));
-
-  //Serial.println("IMU...");
-  delay(50);
-  my3IMU.init(); //init the IMU
-  delay(150);
-
-
-
-  if (configuration.debug == 1)
-    debugConfiguration();
-
-  //saveConfig();
-  // set the watchdog to 2s (this will restart the arduino if it freezes)
-  //wdt_enable(WDTO_2S);
-
-  // swarnInit();
-  LastEvent = "Swarn ready";
-  //RemoteInit();
-
-  // Setup callbacks for SerialCommand commands
-  SCmd.addCommand("SCMD", setCommand);
-  SCmd.addCommand("READ", printCommand);
-  //SCmd.addDefaultHandler(unrecognizedCMD);  // Handler for command that isn't matched
-  //play(notes, beats);
+  randomSeed(analogRead(0));
+  lastControlUs = micros();
+  remoteInit();
+  setEvent("Ready");
 }
 
-//------------------ Main loop ------------------
 void loop() {
-  StartL = millis();
-  //wdt_reset();
-  // update sensors and motors, also chek commands and send back telemetry
-  //ADD HERE A TIMED ACTIONS FOR SENSORS
-  ReadIMUTimedAction.check();
-  RemoteReadTimedAction.check();
-  TelemetryTXTimedAction.check();
-  //updateMotorSpeedTimedAction.check();
-  //updateMotorSpeeds(UserControl[0], UserControl[1]);
+  commsRead();
 
-  if (AUTOTUNE == 1) {
-    //SwarnTimedAction.check();
+  unsigned long now = micros();
+  if (now - lastControlUs >= CONTROL_PERIOD_US) {
+    float dt = (now - lastControlUs) * 1e-6f;
+    // If something blocked us for long, don't let one huge dt kick the integrators.
+    if (dt > 0.05f) dt = 0.05f;
+    lastControlUs = now;
+
+    controlStep(dt);
+
+    unsigned long took = micros() - now;
+    if (took > maxLoopUs) maxLoopUs = took;
   }
 
-  // Speed pid,  input is wheel speed, output is angleSetpoint
-  speedPIDSetpoint = configuration.Maxthrottle * UserControl[1];
-  //If we are moving we need to reduce the Speed PID values in order to avoud "stops and go"
-  if (UserControl[1] != 0) {
-    speedPID.SetTunings(configuration.speedPIDMoveFactor * configuration.speedPIDKp, configuration.speedPIDMoveFactor * configuration.speedPIDKi, configuration.speedPIDMoveFactor * configuration.speedPIDKd);
-  } else {
-    speedPID.SetTunings(configuration.speedPIDKp, configuration.speedPIDKi, configuration.speedPIDKd);
+  static unsigned long lastTx = 0;
+  unsigned long period = cfg.debug ? cfg.debugSampleRate : cfg.telemetryPeriod;
+  if (millis() - lastTx >= period) {
+    lastTx = millis();
+    if (cfg.debug)
+      debugTX();
+    else
+      telemetryTX();
   }
-  speedPID.Compute();
-  anglePIDSetpoint = -speedPIDOutput;
-
-  // Update angle PID tuning
-  if (abs(anglePIDInput) < (float) configuration.TriggerAngleAggressive && configuration.TriggerAngleAggressive != 0) {
-    //we're close to setpoint, use conservative tuning parameters
-    anglePID.SetTunings((float) configuration.anglePIDConKp, (float) configuration.anglePIDConKi, (float) configuration.anglePIDConKd);
-    PIDConfigType = "CONSERVATIVE";
-
-  } else if (abs(anglePIDInput) > (float) configuration.TriggerAngleAggressive && abs(anglePIDInput) <= 30) {
-
-    //we're far from setpoint, use aggressive tuning parameters
-    anglePID.SetTunings((float) configuration.anglePIDAggKp, (float) configuration.anglePIDAggKi, (float) configuration.anglePIDAggKd);
-    PIDConfigType = "AGGRESSIVE";
-
-  } else {
-    anglePID.SetTunings(0, 0, 0);
-  }
-
-  anglePID.Compute();
-  //Filter the angle with Kalman
-  //angleKalmanFilter.correct(anglePIDOutput);
-  //anglePIDOutput = angleKalmanFilter.getState();
-
-  if (configuration.motorsON == 1) {
-    //Serial.println("input sent to motors");
-
-    //motorLeft.setSpeedPercentage(-anglePIDOutput - configuration.steerGain * (UserControl[0])); // + configuration.throttleGain*UserControl[1]);
-    //motorRight.setSpeedPercentage(-anglePIDOutput + configuration.steerGain * (UserControl[0])); // + configuration.throttleGain*UserControl[1]);
-  } else {
-    //motorLeft.setSpeed(0);
-    //motorRight.setSpeed(0);
-  }
-  if (configuration.debug == 1)
-    debugTimedAction.check();
-
-
-  dISTE = (LoopT / 1000 * (anglePIDSetpoint - pitch) * (anglePIDSetpoint - pitch));
-  ISTE = ISTE + dISTE;
-  LoopT = millis() - StartL;
+  motorTestReport();
 }
 
+static void updateState() {
+  unsigned long nowMs = millis();
+  bool upright = fabs(pitch) < UPRIGHT_ANGLE;
 
+  if (!motorsEnabled) {
+    state = STATE_DISARMED;
+    return;
+  }
 
-/* just debug functions. uncomment the debug information you want in debugEverything */
-void debugEverything() {
-  debugImu();
-  debugAnglePID();
-  debugSpeedPID();
-  //debugISE();
-  //debugAnglePIDCoeff();
-  //debugSpeedPIDCoeff();
-  //debugEncoders();
-  debugMotorSpeeds();
-  //debugMotorCalibrations();
-  //debugMotorSpeedCalibration();
-  //debugChart2();
-  //unrecognizedCMD();
-  debugLoopTime();
-  Serial.println();
+  switch (state) {
+    case STATE_DISARMED:
+    case STATE_FALLEN:
+    case STATE_WAITING:
+      if (nowMs < ARM_DELAY_MS || !upright) {
+        uprightSince = 0;
+        if (state == STATE_DISARMED) state = STATE_WAITING;
+        break;
+      }
+      if (uprightSince == 0) uprightSince = nowMs;
+      if (nowMs - uprightSince >= UPRIGHT_HOLD_MS) {
+        anglePID.reset();
+        speedPID.reset();
+        uprightSince = 0;
+        state = STATE_BALANCING;
+        setEvent("Balancing");
+      }
+      break;
 
-};
-
-
-void ReadIMU() {
-  my3IMU.getYawPitchRoll(ypr);
-  altimeter = my3IMU.getBaroAlt();
+    case STATE_BALANCING:
+      if (fabs(pitch) > cfg.fallAngle) {
+        state = STATE_FALLEN;
+        motorsStop();
+        autotuneOnFall();
+        setEvent("Fallen");
+      }
+      break;
+  }
 }
 
+void controlStep(float dt) {
+  imuRead(dt);
+  motorsUpdateSpeed(dt);
+  updateState();
+
+  if (state != STATE_BALANCING) {
+    angleOutput = 0;
+    angleSetpoint = 0;
+    speedSetpoint = 0;
+    if (state == STATE_DISARMED && millis() < motorTestUntil)
+      motorsSet(motorTestPower, motorTestPower);
+    else
+      motorsStop();
+    return;
+  }
+
+  // Speed loop: lean forward to speed up, backward to slow down. The setpoint is
+  // ramped: a sudden jump makes the speed loop overshoot into motor saturation.
+  float target = throttleCmd / 100.0f * cfg.Maxthrottle;
+  float step = cfg.speedRamp * dt;
+  speedSetpoint += constrain(target - speedSetpoint, -step, step);
+  float f = (throttleCmd != 0) ? cfg.speedPIDMoveFactor : 1.0f;
+  speedPID.kp = f * cfg.speedPIDKp;
+  speedPID.ki = f * cfg.speedPIDKi;
+  speedPID.kd = f * cfg.speedPIDKd;
+  speedPID.outMin = -cfg.speedPIDOutputLimit;
+  speedPID.outMax = cfg.speedPIDOutputLimit;
+  angleSetpoint = speedPID.compute(speedSetpoint, wheelSpeed, dt);
+
+  // Angle loop. The PID drives (setpoint - pitch) to zero; when leaning forward
+  // (pitch > setpoint) its output is negative, and the wheels must go forward.
+  float angleError = pitch - angleSetpoint;
+  if (cfg.TriggerAngleAggressive > 0 && fabs(angleError) > cfg.TriggerAngleAggressive) {
+    anglePID.kp = cfg.anglePIDAggKp;
+    anglePID.ki = cfg.anglePIDAggKi;
+    anglePID.kd = cfg.anglePIDAggKd;
+  } else {
+    anglePID.kp = cfg.anglePIDConKp;
+    anglePID.ki = cfg.anglePIDConKi;
+    anglePID.kd = cfg.anglePIDConKd;
+  }
+  anglePID.outMin = -cfg.anglePIDOutputLimit;
+  anglePID.outMax = cfg.anglePIDOutputLimit;
+  angleOutput = -anglePID.compute(angleSetpoint, pitch, dt);
+
+  // Feed the speed setpoint forward: wheel speed in % roughly equals motor command
+  // in %, so the PIDs only have to correct the difference instead of slowly
+  // integrating up the whole cruise command.
+  float drive = angleOutput + cfg.speedFeedForward * speedSetpoint;
+  float steer = steerCmd / 100.0f * cfg.Maxsteer;
+  motorsSet(drive + steer, drive - steer);
+
+  iste += angleError * angleError * dt;
+  autotuneStep(dt, angleError, angleOutput);
+}

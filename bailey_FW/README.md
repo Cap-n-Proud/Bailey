@@ -1,12 +1,143 @@
-Bailey
-======
+Bailey firmware
+===============
 
-Areas of research:
-1. AI: neural networks and SPO to improve stability
-2. Computer vision potentially with neural network
-3. Odometry
-4. 
-To log a warning when anrduino receives an unkown command
-see why it makes "waves" when advancing forward
-verify bug when hit refresh button robot stalls... (maybre because of long delay in passing telemetry headers?
-change PID config only when needd to save time
+Firmware for the Bailey two-wheeled self-balancing robot (Arduino Mega 2560 + FreeIMU v0.4
+board: MPU-6050, HMC5883L, MS5611). It talks to the Node.js server in `server/app` over serial.
+
+Version 2.0 is a rewrite. Why the previous firmware never balanced:
+
+* The motor commands were commented out and the motor/encoder code had been deleted.
+* `anglePIDInput` was never assigned from the IMU and `speedPIDInput` never from the encoders,
+  so both PIDs always saw zero. The IMU was only read every 100 ms.
+* `double UserControl[1]` was indexed with `[1]`: the throttle read/wrote past the array.
+* All `TimedAction`s were built from `configuration` before it was loaded, so every interval was
+  0 and the wheel speed was "encoder counts per loop pass", which changed with serial traffic.
+* `SCMD TriggerAngleAggressive` overwrote `anglePIDConKd`; `SCMD anglePIDSampling` overwrote
+  `anglePIDOutputLowerLimit`.
+* Throttle was multiplied by `Maxthrottle` twice.
+* The autotuner used `LoopT/1000` (integer division, always 0) as its fitness, its search range was
+  computed from an unloaded configuration (all zeros), and its particle arrays were declared with 2
+  elements but indexed with 3.
+* `setup()` always overwrote the EEPROM with defaults, so saved tuning never survived a reset.
+  The stored struct also contained a `String` (a heap pointer).
+* After falling, `SetTunings(0,0,0)` left the PID library's integral term driving the motors.
+
+Structure
+---------
+
+| File | What |
+| --- | --- |
+| `config.h` | Build-time options: motor type (`MOTOR_DC` / `MOTOR_STEPPER`), pins, loop rate |
+| `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
+| `bailey_FW.ino` | `setup()`, `loop()`, state machine and the 200 Hz balance loop |
+| `imu.ino` | FreeIMU read, pitch axis selection and zero offset |
+| `motors.ino` | DC motors + encoders, or steppers driven from a Timer2 interrupt |
+| `comms.ino` | Serial commands, telemetry, PID/SYS lines |
+| `autotune.ino` | Particle swarm autotuner for the angle PID |
+| `settings.ino` | Defaults, EEPROM load/save with checksum |
+| `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
+
+Control loop (200 Hz):
+
+```
+throttle -> speed setpoint (ramped) -> [speed PID] -> pitch setpoint -> [angle PID] -(+ feedforward)-> motors
+                                          ^ wheel speed (encoders)        ^ pitch (IMU)
+```
+
+Signs everywhere: pitch > 0 = leaning forward, motor command > 0 = drive forward, wheel speed > 0
+= moving forward. Fix the hardware to match with the `*Invert` / `imuAxis` settings, not in code.
+
+State machine: `OFF` (Motors 0) -> `WAIT` (Motors 1, waiting until the robot is held within 5 deg
+of upright for 0.3 s) -> `BAL` -> `FALL` (tilt > `fallAngle`, motors cut) -> `WAIT` again once
+picked up. Telemetry field `bal` is the state: 0 OFF, 1 WAIT, 2 BAL, 3 FALL.
+
+Libraries
+---------
+
+* FreeIMU (Varesano, v0.4) with I2Cdev, MPU60X0, MS561101BA, HMC58X3. Set the board define in
+  `FreeIMU.h` to match your IMU.
+* Encoder by Paul Stoffregen (DC motors only). Use release 1.4.4; the current git master does not
+  compile for AVR.
+* Wire, SPI, EEPROM (bundled with the Arduino AVR core).
+
+To use steppers, build with `MOTOR_TYPE` set to `MOTOR_STEPPER` in `config.h` and check the STEP/DIR/EN pins.
+
+Bring-up (do it in this order)
+------------------------------
+
+Send the commands from the web UI command box or a serial monitor at 38400 baud. Settings changed
+with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
+
+1. **Turn on debug output:** `SCMD SerialDebug 1` prints a readable status line twice a second.
+2. **IMU axis:** tilt the robot forward. `pitch` must go positive. If it doesn't move, use
+   `SCMD imuAxis 2`. If it goes negative, use `SCMD imuInvert 1`.
+3. **Zero:** hold the robot at its balance point (where it neither falls forward nor backward)
+   and send `SCMD CalibrateZero 1`.
+4. **Motors and encoders:** lift the wheels off the ground, motors off. `SCMD MotorTest 30` runs
+   both wheels at 30 % for one second, then prints `TEST,<left>,<right>`.
+   * Both wheels must turn **forward** (the direction the robot leans to when pitch is positive).
+     If a wheel turns backward, use `SCMD motorLeftInvert 1` or `SCMD motorRightInvert 1`.
+   * Both reported speeds must be **positive**. If one is negative, use `SCMD encoderLeftInvert 1`
+     or `SCMD encoderRightInvert 1`.
+   * At `SCMD MotorTest 100` the speeds should be about 100. If not, set
+     `SCMD encoderCountsPerSecFull <counts/s>` (default 10700 = 100 rpm with 6400 counts/rev).
+   * Lower `motorLeftMinimumSpeed` / `motorRightMinimumSpeed` (PWM 0-255) to the value where each
+     wheel just starts turning.
+5. **Save:** `SCMD SaveCfg 1`.
+6. **Balance:** `SCMD Motors 1`, hold the robot upright and let go once the wheels engage.
+7. **Tune** with the sliders, or `SCMD AUTOTUNE 1` while it balances (below), then `SCMD SaveCfg 1`.
+
+If it falls the same way every time, re-check steps 2-4: a sign error makes it run away instantly.
+If it oscillates fast, lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
+driving to stay up, redo step 3.
+
+Default gains
+-------------
+
+The defaults come from an LQR design for the stock robot (94 mm wheels, Pololu 100:1 gear motors,
+~100 rpm). They were then checked in the simulator against a range of motor lags (40-150 ms),
+body heights and IMU offsets of ±2 deg. Treat them as a starting point, not a final tuning.
+
+Autotuner
+---------
+
+`SCMD AUTOTUNE 1` (robot balancing) runs a particle swarm search over the conservative angle gains
+(Kp, Ki, Kd) within ±`SPOspread` of the current values. Each candidate gets `SPOSettle` ms to
+settle, then is scored for `SPOConfigEval` ms on mean squared angle error plus a small motor
+effort term. `numParticles` x `maxIterations` candidates are tried (8 x 10 x 3.5 s = about 5 min
+by default). Progress lines: `SPO,<iteration>,<particle>,<score>,<best score>,<Kp>,<Ki>,<Kd>`.
+
+When it finishes, or on `SCMD AUTOTUNE 0`, the best gains are applied (send `SCMD SaveCfg 1` to
+keep them). If the robot falls, that candidate scores as bad, the best gains so far are restored,
+and the search continues once you stand the robot up again. After 3 falls it stops. `SCMD Motors 0`
+aborts and restores the gains from before the run.
+
+Commands
+--------
+
+`SCMD <name> <value>` (echoed back), `READ <RemoteInit|PIDParamTX|SYSParamTX|printConfig>`.
+
+| Name | Value |
+| --- | --- |
+| `speedPIDKp`, `speedPIDKi`, `speedPIDKd` | gain x 10000 (UI sliders) |
+| `anglePIDConKp/Ki/Kd`, `anglePIDAggKp/Ki/Kd` | gain x 100 |
+| `TriggerAngleAggressive`, `calibratedZeroAngle` | deg x 100 |
+| `speedPIDMoveFactor`, `speedFilter`, `speedFeedForward`, `SPOspread` | fraction x 100 |
+| `anglePIDOutputLimit` (%), `fallAngle` (deg), `speedPIDOutputLimit` (deg), `speedRamp` (%/s), `Maxsteer` (%), `Maxthrottle` (% of full speed), `encoderCountsPerSecFull`, `stepperMaxSpeed` (steps/s), `stepperMaxAccel` (steps/s²) | plain number |
+| `motorLeftMinimumSpeed`, `motorRightMinimumSpeed` | PWM 0-254 |
+| `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
+| `numParticles`, `maxIterations`, `SPOConfigEval` (ms), `SPOSettle` (ms), `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
+| `Motors`, `AUTOTUNE`, `SerialDebug` | 0/1 |
+| `Throttle`, `Steer` | -100..100 |
+| `CalibrateZero 1`, `MotorTest <-100..100>`, `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
+
+Lines from the robot start with a tag: `T`/`TH` telemetry, `PID`/`PIDH`, `SYS`/`SYSH`, `EV` events,
+`SPO` autotune progress, `TEST` motor test, `***` config dump, `E` errors.
+
+Simulator
+---------
+
+`test/run_tests.sh` (needs g++) compiles the firmware for both motor types against a model of the
+robot and checks balancing, pushes, driving, fall detection and recovery, the autotuner, the
+command parser, telemetry format and EEPROM handling. `SIM_TRACE=1 test/sim_dc balance` prints the
+control loop as it runs.
