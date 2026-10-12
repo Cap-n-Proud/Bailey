@@ -43,6 +43,7 @@ bool motorsEnabled = false;
 RobotState state = STATE_DISARMED;
 unsigned long uprightSince = 0;
 unsigned long motorTestUntil = 0;
+unsigned long lastDriveCmd = 0;   // millis() of the last Throttle/Steer command
 float motorTestPower = 0;
 
 // Statistics
@@ -87,6 +88,14 @@ void setup() {
 
 void loop() {
   commsRead();
+
+  // Drive watchdog: the remote repeats Throttle/Steer while they are non-zero,
+  // so if the Pi, the network or the browser goes away the robot stops instead
+  // of driving off.
+  if ((throttleCmd != 0 || steerCmd != 0) && millis() - lastDriveCmd > DRIVE_TIMEOUT_MS) {
+    throttleCmd = steerCmd = 0;
+    setEvent("Drive timeout");
+  }
 
   unsigned long now = micros();
   if (now - lastControlUs >= CONTROL_PERIOD_US) {

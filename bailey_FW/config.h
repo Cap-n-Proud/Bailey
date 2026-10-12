@@ -5,7 +5,7 @@
 #define BAILEY_CONFIG_H
 
 #define FIRMWARE_VERSION "2.0"
-#define SERIAL_BAUD 38400          // must match serBaud in server/app/config.json
+#define SERIAL_BAUD 115200         // must match serial.baudRate in server/config.json
 
 // ---------------- Motor driver ----------------
 // MOTOR_DC:      DC gear motors with quadrature encoders on an L298-style H-bridge
@@ -50,5 +50,6 @@
 #define ARM_DELAY_MS        2000UL   // let the tilt filter converge after boot before motors may run
 #define UPRIGHT_ANGLE       5.0f     // deg: robot must be this close to upright to start balancing
 #define UPRIGHT_HOLD_MS     300UL    // ...for this long
+#define DRIVE_TIMEOUT_MS    1000UL   // throttle/steer fall back to 0 unless refreshed this often
 
 #endif

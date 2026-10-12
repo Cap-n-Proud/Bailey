@@ -62,7 +62,7 @@ void loadDefaultSettings() {
 
   cfg.debug = 0;
   cfg.debugSampleRate = 500;
-  cfg.telemetryPeriod = 250;
+  cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud
 }
 
 static uint16_t settingsCrc(const Settings &s) {

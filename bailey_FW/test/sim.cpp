@@ -13,6 +13,10 @@
 #include "MPU6050.h"
 #include "FastAccelStepper.h"
 #include <algorithm>
+#include <poll.h>
+#include <unistd.h>
+#include <chrono>
+#include <thread>
 #include <random>
 #include <vector>
 
@@ -143,9 +147,19 @@ static void onLine(const std::string &l) {
   if (getenv("SIM_VERBOSE")) printf("  < %s\n", l.c_str());
 }
 
+// Like the web UI: a non-zero Throttle/Steer is repeated every 100 ms until it
+// is set back to 0 (the firmware stops driving if the repeats stop).
+std::string heldThrottle, heldSteer;
+bool remoteConnected = true;
+
 static void send(const std::string &cmd) {
   if (getenv("SIM_VERBOSE")) printf("  > %s\n", cmd.c_str());
   Serial.send(cmd + "\n");
+  auto hold = [&](const char *prefix, std::string &held) {
+    if (cmd.rfind(prefix, 0) == 0) held = atof(cmd.c_str() + strlen(prefix)) != 0 ? cmd : "";
+  };
+  hold("SCMD Throttle ", heldThrottle);
+  hold("SCMD Steer ", heldSteer);
 }
 
 struct Stats {
@@ -161,7 +175,13 @@ const double SIM_DT = 0.0002;
 static void run(double seconds) {
   uint64_t end = simMicros + (uint64_t)(seconds * 1e6);
   RobotState prev = state;
+  static uint64_t lastRepeat = 0;
   while (simMicros < end) {
+    if (remoteConnected && simMicros - lastRepeat >= 100000) {
+      lastRepeat = simMicros;
+      if (!heldThrottle.empty()) Serial.send(heldThrottle + "\n");
+      if (!heldSteer.empty()) Serial.send(heldSteer + "\n");
+    }
     plant.step(SIM_DT);
     simMicros += (uint64_t)(SIM_DT * 1e6);
     loop();
@@ -209,6 +229,9 @@ static void boot() {
   if (getenv("SIM_LAG")) plant.sensorLag = atof(getenv("SIM_LAG"));
   if (getenv("SIM_IMU_HEIGHT")) plant.imuHeight = atof(getenv("SIM_IMU_HEIGHT"));
   if (getenv("SIM_BIAS")) plant.gyroBiasDps = atof(getenv("SIM_BIAS"));
+  heldThrottle.clear();
+  heldSteer.clear();
+  remoteConnected = true;
   // Like a power cycle: runtime state back to power-on values (EEPROM persists).
   autotuneAbort("reset");
   motorsEnabled = false;
@@ -314,6 +337,15 @@ static bool scenarioDrive() {
   run(6);
   ok &= check(stats.falls == 0 && state == STATE_BALANCING, "no fall when reversing and stopping");
   ok &= check(fabs((plant.vl + plant.vr) / 2) < 0.05, "stops when throttle is released");
+
+  // The remote disappears mid-drive: the firmware must stop driving by itself.
+  send("SCMD Throttle 100");
+  run(2);
+  remoteConnected = false;
+  run(1.2);
+  ok &= check(throttleCmd == 0, "drive watchdog zeroes throttle when the remote goes quiet");
+  run(5);
+  ok &= check(fabs((plant.vl + plant.vr) / 2) < 0.05 && state == STATE_BALANCING, "...and the robot stops and keeps balancing");
   printf("  max tilt %.2f deg during the whole drive\n", stats.maxAbsDeg);
   return ok;
 }
@@ -441,7 +473,7 @@ static bool scenarioAutotune() {
   received.clear();
   send("SCMD AUTOTUNE 1");
   run(0.1);
-  bool refused = !received.empty() && received.back() == "E, AUTOTUNE needs stepper motors";
+  bool refused = std::find(received.begin(), received.end(), "E, AUTOTUNE needs stepper motors") != received.end();
   return check(refused && !autotuneRunning(), "DC build refuses to autotune");
 #endif
 }
@@ -535,6 +567,56 @@ static bool scenarioDemo() {
   return state == STATE_BALANCING;
 }
 
+// Virtual robot for the web server (server/ with "serial.port": "sim"): runs in
+// real time, reads commands on stdin and writes the robot's serial output on
+// stdout. A simulated person holds the robot upright until it starts
+// balancing, and picks it back up 2 s after it falls.
+static bool scenarioLive() {
+  remoteConnected = false;        // the server repeats drive commands itself
+  received.clear();
+  Serial.onLine = [](const std::string &l) {
+    fwrite(l.data(), 1, l.size(), stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+  };
+  setup();
+  plant.held = true;
+  std::string pending;
+  double fallenFor = 0;
+  auto next = std::chrono::steady_clock::now();
+  for (;;) {
+    struct pollfd p = { 0, POLLIN, 0 };
+    while (poll(&p, 1, 0) > 0) {
+      char buf[256];
+      ssize_t n = read(0, buf, sizeof buf);
+      if (n <= 0) return true;    // server went away
+      Serial.send(std::string(buf, n));
+    }
+    run(0.01);
+    if (plant.held && state == STATE_BALANCING) plant.held = false;
+    if (state == STATE_FALLEN) {
+      fallenFor += 0.01;
+      if (fallenFor > 2) {       // pick it up again
+        plant.held = true;
+        plant.vl = plant.vr = 0;
+        double from = plant.theta;
+        for (int i = 1; i <= 50; i++) {
+          plant.theta = from * (1 - i / 50.0);
+          plant.pickupRate = -from / 0.5;
+          run(0.01);
+        }
+        plant.pickupRate = 0;
+        fallenFor = 0;
+      }
+    } else {
+      fallenFor = 0;
+    }
+    if (state == STATE_DISARMED) plant.held = true;   // someone holds it while the motors are off
+    next += std::chrono::milliseconds(10);
+    std::this_thread::sleep_until(next);
+  }
+}
+
 static bool scenarioCommands() {
   boot();
   bool ok = true;
@@ -583,7 +665,8 @@ static bool scenarioCommands() {
   received.clear();
   send("SCMD bogus 1");
   run(0.01);
-  ok &= check(!received.empty() && received.back().rfind("E, Unknown command bogus", 0) == 0, "unknown command reported");
+  ok &= check(std::any_of(received.begin(), received.end(), [](const std::string &l) { return l.rfind("E, Unknown command bogus", 0) == 0; }),
+              "unknown command reported");
 
   // A line longer than the buffer must not overflow it.
   send(std::string(200, 'X'));
@@ -631,7 +714,7 @@ int main(int argc, char **argv) {
     { "autotune", scenarioAutotune }, { "commands", scenarioCommands },
     { "scaling", scenarioScaling },
     { "eeprom", scenarioEeprom },     { "score", scenarioScore },
-    { "demo", scenarioDemo },     { "motortest", scenarioMotorTest },
+    { "demo", scenarioDemo },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
   };
   if (argc < 2) {
     printf("usage: %s <scenario>\n", argv[0]);
@@ -640,7 +723,7 @@ int main(int argc, char **argv) {
   }
   for (auto &s : scenarios) {
     if (strcmp(argv[1], s.name) == 0) {
-      printf("%s:\n", s.name);
+      if (strcmp(s.name, "live") != 0) printf("%s:\n", s.name);
       return s.fn() ? 0 : 1;
     }
   }

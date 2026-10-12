@@ -3,7 +3,7 @@ Bailey firmware
 
 Firmware for the Bailey two-wheeled self-balancing robot: an Arduino Mega 2560 does the balancing
 and drives the motors (steppers by default), using the MPU-6050 on the IMU board. A Raspberry Pi
-runs the Node.js server in `server/app` (web UI, video) and talks to the Arduino over USB serial.
+runs the Node.js server in `server/` (web UI, video) and talks to the Arduino over USB serial at 115200 baud.
 
 Version 2.0 is a rewrite. Why the previous firmware never balanced:
 
@@ -78,7 +78,7 @@ ENABLE on 12, MPU-6050 on SDA/SCL (20/21 on the Mega). For DC motors, set `MOTOR
 Bring-up (do it in this order)
 ------------------------------
 
-Send the commands from the web UI command box or a serial monitor at 38400 baud. Settings changed
+Send the commands from the web UI console or a serial monitor at 115200 baud. Settings changed
 with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 
 1. **Turn on debug output:** `SCMD SerialDebug 1` prints a readable status line twice a second.
@@ -198,7 +198,7 @@ Commands
 | `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
 | `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
 | `Motors`, `AUTOTUNE`, `SerialDebug` | 0/1 |
-| `Throttle`, `Steer` | -100..100 |
+| `Throttle`, `Steer` | -100..100. Not echoed. A non-zero value must be repeated at least every second (the web server sends them at 10 Hz); otherwise both drop back to 0, so a lost connection can't leave the robot driving |
 | `CalibrateZero 1`, `MotorTest <-100..100>`, `pendulumLength <mm>` (steppers: gains for that length), `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
 
 Lines from the robot start with a tag: `T`/`TH` telemetry, `PID`/`PIDH`, `SYS`/`SYSH`, `EV` events,
@@ -211,3 +211,8 @@ Simulator
 robot and checks balancing, pushes, driving, fall detection and recovery, the autotuner, the
 command parser, telemetry format and EEPROM handling. `SIM_TRACE=1 test/sim_dc balance` prints the
 control loop as it runs.
+
+`test/sim_stepper live` runs the simulated robot in real time and speaks the serial protocol on
+stdin/stdout. The web server uses it with `npm run sim` (in `server/`), so the whole system can be
+tried without hardware: a simulated person holds the robot up until it balances and picks it up
+again after a fall.

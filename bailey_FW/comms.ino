@@ -186,8 +186,10 @@ static void setCommand(const char *arg, const char *value) {
     }
   } else if (is(arg, PSTR("Steer"))) {
     steerCmd = constrain(v, -100, 100);
+    lastDriveCmd = millis();
   } else if (is(arg, PSTR("Throttle"))) {
     throttleCmd = constrain(v, -100, 100);
+    lastDriveCmd = millis();
   } else if (is(arg, PSTR("AUTOTUNE"))) {
     if (atoi(value)) autotuneStart();
     else autotuneAbort("stopped");
@@ -249,10 +251,13 @@ void handleLine(char *line) {
       unknownCommand(arg, NULL);
       return;
     }
-    Serial.print(F("SCMD "));
-    Serial.print(arg);
-    Serial.print(' ');
-    Serial.println(value);
+    // Echo, except for the drive commands that arrive ~10 times a second.
+    if (!is(arg, PSTR("Throttle")) && !is(arg, PSTR("Steer"))) {
+      Serial.print(F("SCMD "));
+      Serial.print(arg);
+      Serial.print(' ');
+      Serial.println(value);
+    }
     setCommand(arg, value);
   } else if (is(cmd, PSTR("READ"))) {
     if (!arg) arg = (char *)"";
