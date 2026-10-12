@@ -1,8 +1,9 @@
 Bailey firmware
 ===============
 
-Firmware for the Bailey two-wheeled self-balancing robot (Arduino Mega 2560 + FreeIMU v0.4
-board: MPU-6050, HMC5883L, MS5611). It talks to the Node.js server in `server/app` over serial.
+Firmware for the Bailey two-wheeled self-balancing robot: an Arduino Mega 2560 does the balancing
+and drives the motors (steppers by default), using the MPU-6050 on the IMU board. A Raspberry Pi
+runs the Node.js server in `server/app` (web UI, video) and talks to the Arduino over USB serial.
 
 Version 2.0 is a rewrite. Why the previous firmware never balanced:
 
@@ -27,11 +28,11 @@ Structure
 
 | File | What |
 | --- | --- |
-| `config.h` | Build-time options: motor type (`MOTOR_DC` / `MOTOR_STEPPER`), pins, loop rate |
+| `config.h` | Build-time options: motor type (`MOTOR_STEPPER` default, or `MOTOR_DC`), pins, IMU address, loop rate |
 | `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
 | `bailey_FW.ino` | `setup()`, `loop()`, state machine and the 200 Hz balance loop |
-| `imu.ino` | FreeIMU read, pitch axis selection and zero offset |
-| `motors.ino` | DC motors + encoders, or steppers driven from a Timer2 interrupt |
+| `imu.ino` | MPU-6050 read + complementary filter, any mounting orientation, zero offset |
+| `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
 | `comms.ino` | Serial commands, telemetry, PID/SYS lines |
 | `autotune.ino` | Particle swarm autotuner for the angle PID |
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
@@ -54,13 +55,24 @@ picked up. Telemetry field `bal` is the state: 0 OFF, 1 WAIT, 2 BAL, 3 FALL.
 Libraries
 ---------
 
-* FreeIMU (Varesano, v0.4) with I2Cdev, MPU60X0, MS561101BA, HMC58X3. Set the board define in
-  `FreeIMU.h` to match your IMU.
-* Encoder by Paul Stoffregen (DC motors only). Use release 1.4.4; the current git master does not
-  compile for AVR.
-* Wire, SPI, EEPROM (bundled with the Arduino AVR core).
+Install from the Arduino Library Manager (versions the firmware was built with):
 
-To use steppers, build with `MOTOR_TYPE` set to `MOTOR_STEPPER` in `config.h` and check the STEP/DIR/EN pins.
+* **MPU6050** by Electronic Cats, v1.4.5. This is the maintained continuation of Jeff Rowberg's
+  i2cdevlib and includes `I2Cdev`. It replaces FreeIMU, which has not been maintained since about
+  2014. Balancing needs only the pitch angle and rate, which a complementary filter on the raw
+  gyro and accelerometer provides with less delay than a full AHRS. The magnetometer and
+  barometer are not used.
+* **FastAccelStepper** by gin66, v2.0.0 (steppers). Generates step pulses from a hardware timer
+  with acceleration ramps, so the steppers never get a speed step they can't follow. On the Mega
+  the STEP pins must be Timer 4 outputs: pins 6, 7 or 8. v2.0.0 is a brand-new major release; if
+  it misbehaves, v1.4.0 has the same API for everything used here.
+* **Encoder** by Paul Stoffregen, v1.4.4 (DC motors only; the current git master does not compile
+  for AVR).
+* Wire, EEPROM (bundled with the Arduino AVR core).
+
+Wiring for steppers is in `config.h`: STEP 6 (left) and 7 (right), DIR 9 and 10, shared active-low
+ENABLE on 12, MPU-6050 on SDA/SCL (20/21 on the Mega). For DC motors, set `MOTOR_TYPE` to
+`MOTOR_DC`.
 
 Bring-up (do it in this order)
 ------------------------------
@@ -69,8 +81,10 @@ Send the commands from the web UI command box or a serial monitor at 38400 baud.
 with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 
 1. **Turn on debug output:** `SCMD SerialDebug 1` prints a readable status line twice a second.
-2. **IMU axis:** tilt the robot forward. `pitch` must go positive. If it doesn't move, use
-   `SCMD imuAxis 2`. If it goes negative, use `SCMD imuInvert 1`.
+2. **IMU axis:** tilt the robot forward. `pitch` must follow the tilt and go positive. `imuAxis`
+   is the sensor axis the robot pitches around (0 = X, the default; 1 = Y; 2 = Z). Try the others
+   if pitch doesn't follow the tilt. If it follows but goes negative, use `SCMD imuInvert 1`.
+   Any mounting orientation works.
 3. **Zero:** hold the robot at its balance point (where it neither falls forward nor backward)
    and send `SCMD CalibrateZero 1`.
 4. **Motors and encoders:** lift the wheels off the ground, motors off. `SCMD MotorTest 30` runs
@@ -79,13 +93,19 @@ with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
      If a wheel turns backward, use `SCMD motorLeftInvert 1` or `SCMD motorRightInvert 1`.
    * Both reported speeds must be **positive**. If one is negative, use `SCMD encoderLeftInvert 1`
      or `SCMD encoderRightInvert 1`.
-   * At `SCMD MotorTest 100` the speeds should be about 100. If not, set
-     `SCMD encoderCountsPerSecFull <counts/s>` (default 10700 = 100 rpm with 6400 counts/rev).
-   * Lower `motorLeftMinimumSpeed` / `motorRightMinimumSpeed` (PWM 0-255) to the value where each
-     wheel just starts turning.
+   * Steppers: `stepperMaxSpeed` (steps/s at 100 %, default 4000 = 2.5 rev/s at 1/8 microstepping)
+     and `stepperMaxAccel` must suit your motors and microstepping. If the motors stall or skip at
+     `MotorTest 100`, lower them, or raise the driver current. The default gains assume about the
+     same wheel speed in m/s, so if you change the microstepping, scale `stepperMaxSpeed` and
+     `stepperMaxAccel` by the same factor.
+   * DC: at `SCMD MotorTest 100` the speeds should be about 100. If not, set
+     `SCMD encoderCountsPerSecFull <counts/s>`. Lower `motorLeftMinimumSpeed` /
+     `motorRightMinimumSpeed` (PWM 0-255) to the value where each wheel just starts turning.
 5. **Save:** `SCMD SaveCfg 1`.
 6. **Balance:** `SCMD Motors 1`, hold the robot upright and let go once the wheels engage.
 7. **Tune** with the sliders, or `SCMD AUTOTUNE 1` while it balances (below), then `SCMD SaveCfg 1`.
+
+Keep the robot still while it boots: the gyro bias is measured then.
 
 If it falls the same way every time, re-check steps 2-4: a sign error makes it run away instantly.
 If it oscillates fast, lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
@@ -94,9 +114,12 @@ driving to stay up, redo step 3.
 Default gains
 -------------
 
-The defaults come from an LQR design for the stock robot (94 mm wheels, Pololu 100:1 gear motors,
-~100 rpm). They were then checked in the simulator against a range of motor lags (40-150 ms),
-body heights and IMU offsets of ±2 deg. Treat them as a starting point, not a final tuning.
+There are separate defaults for steppers and DC motors. They started from an LQR design and were
+then tuned in the simulator. Each set was checked across a range of assumptions, because the robot's
+mass distribution isn't in the CAD files: centre of mass 12-30 cm above the axle, tilt offsets of
+±2°, IMU noise, and (DC) motor response times of 40-150 ms. Geometry from `hardware/`: 94 mm
+wheels, 220 mm body, head with the Pi and camera on top. Treat them as a starting point, not a
+final tuning.
 
 Autotuner
 ---------

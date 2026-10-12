@@ -68,104 +68,77 @@ void motorsUpdateSpeed(float dt) {
 
 #elif MOTOR_TYPE == MOTOR_STEPPER
 
-// Step pulses come from a Timer2 interrupt every STEP_TICK_US. Each motor has a
-// phase accumulator: its rate is added every tick and a step is issued when it
-// overflows 2^16, giving any step rate up to one step every two ticks.
-volatile int32_t stepRateLeft = 0, stepRateRight = 0;   // steps per tick * 65536, signed
-volatile uint32_t phaseLeft = 0, phaseRight = 0;
-float stepSpeedLeft = 0, stepSpeedRight = 0;            // current steps/s after ramping
-
-#if defined(__AVR__)
-// digitalWrite() is too slow for a 20 kHz interrupt, so write the port directly.
-volatile uint8_t *stepPortLeft, *stepPortRight;
-uint8_t stepMaskLeft, stepMaskRight;
-
-ISR(TIMER2_COMPA_vect) {
-  // Pulses started on the previous tick end here (>= 50 us high).
-  *stepPortLeft &= ~stepMaskLeft;
-  *stepPortRight &= ~stepMaskRight;
-
-  int32_t rl = stepRateLeft;
-  if (rl != 0) {
-    phaseLeft += (uint32_t)(rl < 0 ? -rl : rl);
-    if (phaseLeft >= 65536UL) {
-      phaseLeft -= 65536UL;
-      *stepPortLeft |= stepMaskLeft;
-    }
-  }
-  int32_t rr = stepRateRight;
-  if (rr != 0) {
-    phaseRight += (uint32_t)(rr < 0 ? -rr : rr);
-    if (phaseRight >= 65536UL) {
-      phaseRight -= 65536UL;
-      *stepPortRight |= stepMaskRight;
-    }
-  }
-}
-#endif
+// FastAccelStepper generates the step pulses from a hardware timer and ramps
+// the speed with a bounded acceleration, so the motors never get a speed jump
+// they can't follow (which would make them skip steps).
+FastAccelStepperEngine engine;
+FastAccelStepper *stepperLeft = NULL;
+FastAccelStepper *stepperRight = NULL;
+static bool steppersEnabled = false;
 
 void motorsSetup() {
-  pinMode(PIN_LEFT_STEP, OUTPUT);
-  pinMode(PIN_LEFT_DIR, OUTPUT);
-  pinMode(PIN_RIGHT_STEP, OUTPUT);
-  pinMode(PIN_RIGHT_DIR, OUTPUT);
-  pinMode(PIN_STEPPER_EN, OUTPUT);
-  digitalWrite(PIN_STEPPER_EN, HIGH);   // drivers off
-
-#if defined(__AVR__)
-  stepPortLeft = portOutputRegister(digitalPinToPort(PIN_LEFT_STEP));
-  stepMaskLeft = digitalPinToBitMask(PIN_LEFT_STEP);
-  stepPortRight = portOutputRegister(digitalPinToPort(PIN_RIGHT_STEP));
-  stepMaskRight = digitalPinToBitMask(PIN_RIGHT_STEP);
-  noInterrupts();
-  TCCR2A = _BV(WGM21);                  // CTC mode
-  TCCR2B = _BV(CS21);                   // prescaler 8 -> 2 MHz
-  OCR2A = (F_CPU / 8 / 1000000UL) * STEP_TICK_US - 1;
-  TIMSK2 = _BV(OCIE2A);
-  interrupts();
-#endif
+  engine.init();
+  stepperLeft = engine.stepperConnectToPin(PIN_LEFT_STEP);
+  stepperRight = engine.stepperConnectToPin(PIN_RIGHT_STEP);
+  if (!stepperLeft || !stepperRight) {
+    Serial.println(F("E, stepper pins not usable by FastAccelStepper"));
+    return;
+  }
+  stepperLeft->setDirectionPin(PIN_LEFT_DIR);
+  stepperRight->setDirectionPin(PIN_RIGHT_DIR);
+  stepperLeft->setEnablePin(PIN_STEPPER_EN);
+  stepperRight->setEnablePin(PIN_STEPPER_EN);
+  stepperLeft->setAutoEnable(false);
+  stepperRight->setAutoEnable(false);
 }
 
-static void setStepRate(float stepsPerSec, uint8_t dirPin, uint8_t invert, volatile int32_t &rate) {
-  bool forward = stepsPerSec >= 0;
-  if (invert) forward = !forward;
-  digitalWrite(dirPin, forward ? HIGH : LOW);
-  int32_t r = (int32_t)(fabs(stepsPerSec) * STEP_TICK_US * 1e-6f * 65536.0f);
-  if (r > 32768) r = 32768;             // at most one step every two ticks
-  noInterrupts();
-  rate = r;
-  interrupts();
+static void driveStepper(FastAccelStepper *s, float percent, uint8_t invert) {
+  if (!s) return;
+  if (invert) percent = -percent;
+  float hz = clampPercent(percent) / 100.0f * cfg.stepperMaxSpeed;
+  s->setAcceleration((int32_t)cfg.stepperMaxAccel);
+  if (fabs(hz) < 1.0f) {
+    s->stopMove();                      // ramps down to standstill
+    return;
+  }
+  s->setSpeedInHz((uint32_t)fabs(hz));
+  // Reversing is handled by the library: it decelerates through zero first.
+  if (hz > 0) s->runForward();
+  else s->runBackward();
 }
-
-static float ramp(float current, float target, float maxDelta) {
-  if (target > current + maxDelta) return current + maxDelta;
-  if (target < current - maxDelta) return current - maxDelta;
-  return target;
-}
-
-static float lastStepDt = CONTROL_PERIOD_US * 1e-6f;
 
 void motorsSet(float left, float right) {
-  digitalWrite(PIN_STEPPER_EN, LOW);
-  float maxDelta = cfg.stepperMaxAccel * lastStepDt;
-  stepSpeedLeft = ramp(stepSpeedLeft, clampPercent(left) / 100.0f * cfg.stepperMaxSpeed, maxDelta);
-  stepSpeedRight = ramp(stepSpeedRight, clampPercent(right) / 100.0f * cfg.stepperMaxSpeed, maxDelta);
-  setStepRate(stepSpeedLeft, PIN_LEFT_DIR, cfg.motorLeftInvert, stepRateLeft);
-  setStepRate(stepSpeedRight, PIN_RIGHT_DIR, cfg.motorRightInvert, stepRateRight);
+  if (!steppersEnabled && stepperLeft) {
+    stepperLeft->enableOutputs();
+    stepperRight->enableOutputs();
+    steppersEnabled = true;
+  }
+  driveStepper(stepperLeft, left, cfg.motorLeftInvert);
+  driveStepper(stepperRight, right, cfg.motorRightInvert);
 }
 
 void motorsStop() {
-  stepSpeedLeft = stepSpeedRight = 0;
-  setStepRate(0, PIN_LEFT_DIR, 0, stepRateLeft);
-  setStepRate(0, PIN_RIGHT_DIR, 0, stepRateRight);
-  digitalWrite(PIN_STEPPER_EN, HIGH);   // drivers off, motors free
+  if (!stepperLeft) return;
+  stepperLeft->forceStop();
+  stepperRight->forceStop();
+  if (steppersEnabled) {
+    stepperLeft->disableOutputs();      // motors free, drivers cool
+    stepperRight->disableOutputs();
+    steppersEnabled = false;
+  }
 }
 
-void motorsUpdateSpeed(float dt) {
-  // Steppers don't slip (unless they stall), so the commanded speed is the speed.
-  if (dt > 0) lastStepDt = dt;
-  leftSpeed = stepSpeedLeft / cfg.stepperMaxSpeed * 100.0f;
-  rightSpeed = stepSpeedRight / cfg.stepperMaxSpeed * 100.0f;
+static float stepperSpeedPercent(FastAccelStepper *s, uint8_t invert) {
+  if (!s) return 0;
+  float hz = s->getCurrentSpeedInMilliHz() / 1000.0f;
+  if (invert) hz = -hz;
+  return hz / cfg.stepperMaxSpeed * 100.0f;
+}
+
+void motorsUpdateSpeed(float) {
+  // Steppers don't slip (unless they stall), so the actual step rate is the speed.
+  leftSpeed = stepperSpeedPercent(stepperLeft, cfg.motorLeftInvert);
+  rightSpeed = stepperSpeedPercent(stepperRight, cfg.motorRightInvert);
   wheelSpeed += cfg.speedFilter * ((leftSpeed + rightSpeed) / 2 - wheelSpeed);
 }
 

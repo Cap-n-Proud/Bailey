@@ -7,10 +7,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <math.h>
 #include "config.h"
 
 #define SETTINGS_MAGIC   0xBA17
-#define SETTINGS_VERSION 2
+#define SETTINGS_VERSION 3
 #define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
 #define MAX_PARTICLES    12
 
@@ -49,7 +50,7 @@ struct Settings {
   float stepperMaxAccel;          // stepper: steps/s^2
 
   // Orientation of IMU, motors and encoders. Fix these instead of rewiring.
-  uint8_t imuAxis;                // index in ypr[] that is the balance (pitch) axis: 1 or 2
+  uint8_t imuAxis;                // gyro axis the robot pitches around: 0 = X, 1 = Y, 2 = Z
   uint8_t imuInvert;              // 1 = pitch reads negative when leaning forward
   uint8_t motorLeftInvert, motorRightInvert;
   uint8_t encoderLeftInvert, encoderRightInvert;
@@ -85,10 +86,14 @@ struct Pid {
     first = true;
   }
 
-  float compute(float setpoint, float input, float dt) {
+  // inputRate: derivative of the input if it is measured directly (gyro);
+  // otherwise it is computed from successive inputs.
+  float compute(float setpoint, float input, float dt, float inputRate = NAN) {
     float error = setpoint - input;
     float dInput = 0;
-    if (!first && dt > 0)
+    if (!isnan(inputRate))
+      dInput = inputRate;
+    else if (!first && dt > 0)
       dInput = (input - prevInput) / dt;
     first = false;
     prevInput = input;

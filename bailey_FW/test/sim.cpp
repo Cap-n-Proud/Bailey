@@ -10,7 +10,8 @@
 #include "EEPROM.h"
 #include "Wire.h"
 #include "Encoder.h"
-#include "FreeIMU.h"
+#include "MPU6050.h"
+#include "FastAccelStepper.h"
 #include <algorithm>
 #include <random>
 #include <vector>
@@ -19,7 +20,7 @@ uint64_t simMicros = 0;
 int simPinValue[64];
 int simPwm[64];
 long simEncoder[64];
-float simYpr[3];
+int16_t simAccel[3], simGyro[3];
 SimSerial Serial;
 SimEEPROM EEPROM;
 SimWire Wire;
@@ -42,16 +43,19 @@ struct Plant {
   double motorTau = 0.08;       // s, speed response of the gear motor
   int stictionPwm = 50;         // PWM below which the motor does not move
   double countsPerRev = 6400;
-  double stepsPerRev = 1600;
-  double mountOffsetDeg = 1.5;  // IMU reads this when the robot is truly upright
-  double noiseDeg = 0.05;
+  double stepsPerRev = 1600;    // 200-step motor, 1/8 microstepping
+  double mountOffsetDeg = 1.5;  // IMU is tilted this much when the robot is truly upright
+  double noiseDeg = 0.05;       // scales accelerometer and gyro noise
+  double imuHeight = 0.12;      // m above the axle: it also feels the body's rotation
+  double gyroBiasDps = 0.3;     // residual bias after the boot calibration
 
   double theta = 0, omega = 0;  // rad, + = leaning forward
   double vl = 0, vr = 0;        // wheel ground speed m/s
   double x = 0;
   double encL = 0, encR = 0;
   bool held = true;
-  double imuLag = 0;
+  double alpha = 0;
+  double pickupRate = 0;        // rad/s while someone is turning the robot by hand
   std::mt19937 rng{42};
   std::normal_distribution<double> noise{0, 1};
 
@@ -74,12 +78,12 @@ struct Plant {
     al = driveAccel(vl, PIN_LEFT_PWM, PIN_LEFT_IN1, PIN_LEFT_IN2);
     ar = driveAccel(vr, PIN_RIGHT_PWM, PIN_RIGHT_IN1, PIN_RIGHT_IN2);
 #else
-    // Steppers follow the commanded rate exactly (no stalling modelled).
+    // Steppers follow the library's ramped step rate exactly (no stalling modelled).
     double k = 2 * M_PI * wheelRadius / stepsPerRev;
-    double tl = (simPinValue[PIN_STEPPER_EN] ? 0 : stepSpeedLeft) * k;
-    double tr = (simPinValue[PIN_STEPPER_EN] ? 0 : stepSpeedRight) * k;
-    al = (tl - vl) / dt;
-    ar = (tr - vr) / dt;
+    stepperLeft->advance(dt);
+    stepperRight->advance(dt);
+    al = (stepperLeft->speed * k - vl) / dt;
+    ar = (stepperRight->speed * k - vr) / dt;
 #endif
     if (held) {
       // Held in the air / on a stand: the body doesn't move, the wheels spin freely.
@@ -88,7 +92,7 @@ struct Plant {
       vr += ar * dt;
     } else {
       double a = (al + ar) / 2;
-      double alpha = (g * sin(theta) - a * cos(theta)) / effLength;
+      alpha = (g * sin(theta) - a * cos(theta)) / effLength;
       omega += alpha * dt;
       theta += omega * dt;
       vl += al * dt;
@@ -104,11 +108,20 @@ struct Plant {
     simEncoder[PIN_ENC_LEFT_A] = lround(encL);
     simEncoder[PIN_ENC_RIGHT_A] = lround(encR);
 #endif
-    double measured = theta * 180 / M_PI + mountOffsetDeg + noiseDeg * noise(rng);
-    imuLag += (measured - imuLag) * std::min(1.0, dt / 0.005);
-    simYpr[0] = 0;
-    simYpr[1] = imuLag;
-    simYpr[2] = 0;
+    // MPU-6050 on the body, pitch axis = sensor X, Z up when upright. It measures
+    // gravity plus its own acceleration (wheels + rotation of the body), which is
+    // what makes a plain accelerometer angle useless while balancing.
+    double a = held ? 0 : (al + ar) / 2 + imuHeight * alpha;
+    double t = theta + mountOffsetDeg * M_PI / 180;
+    double fy = cos(t) * a + sin(t) * g;
+    double fz = cos(t) * g - sin(t) * a;
+    const double accLsb = 16384 / g, gyroLsb = 65.5;
+    simAccel[0] = (int16_t)lround(noiseDeg * 0.02 * g * noise(rng) * accLsb);
+    simAccel[1] = (int16_t)lround((fy + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
+    simAccel[2] = (int16_t)lround((fz + noiseDeg * 0.02 * g * noise(rng)) * accLsb);
+    simGyro[0] = (int16_t)lround(((held ? pickupRate : omega) * 180 / M_PI + gyroBiasDps + noiseDeg * 4 * noise(rng)) * gyroLsb);
+    simGyro[1] = (int16_t)lround(noiseDeg * 4 * noise(rng) * gyroLsb);
+    simGyro[2] = (int16_t)lround(noiseDeg * 4 * noise(rng) * gyroLsb);
   }
 };
 
@@ -150,6 +163,15 @@ static void run(double seconds) {
       stats.n++;
     }
     if (prev == STATE_BALANCING && state == STATE_FALLEN) stats.falls++;
+    static FILE *csv = getenv("SIM_CSV") ? fopen(getenv("SIM_CSV"), "w") : nullptr;
+    static uint64_t lastCsv = 0;
+    if (csv && simMicros - lastCsv >= 10000) {
+      if (lastCsv == 0) fprintf(csv, "t,theta,pitch,angleSetpoint,motor,speed,speedSetpoint,state\n");
+      lastCsv = simMicros;
+      fprintf(csv, "%.3f,%.3f,%.3f,%.3f,%.2f,%.4f,%.2f,%d\n", simMicros / 1e6, plant.theta * 180 / M_PI, pitch,
+              angleSetpoint, angleOutput, (plant.vl + plant.vr) / 2, speedSetpoint, (int)state);
+      fflush(csv);
+    }
     static uint64_t lastTrace = 0;
     if (getenv("SIM_TRACE") && simMicros - lastTrace >= (getenv("SIM_TRACE_US") ? atoi(getenv("SIM_TRACE_US")) : 50000)) {
       lastTrace = simMicros;
@@ -278,12 +300,18 @@ static bool scenarioFall() {
 #if MOTOR_TYPE == MOTOR_DC
   ok &= check(simPwm[PIN_LEFT_PWM] == 0 && simPwm[PIN_RIGHT_PWM] == 0, "PWM is zero after falling");
 #else
-  ok &= check(simPinValue[PIN_STEPPER_EN] == HIGH, "stepper drivers disabled after falling");
+  ok &= check(!stepperLeft->enabled, "stepper drivers disabled after falling");
 #endif
-  // Pick it up again.
+  // Pick it up again: rotate it back upright over half a second so the gyro sees it.
   plant.held = true;
-  plant.theta = 0;
   plant.vl = plant.vr = 0;
+  double from = plant.theta;
+  for (int i = 1; i <= 50; i++) {
+    plant.theta = from * (1 - i / 50.0);
+    plant.pickupRate = -from / 0.5;
+    run(0.01);
+  }
+  plant.pickupRate = 0;
   for (int i = 0; i < 2000 && state != STATE_BALANCING; i++) run(0.001);
   ok &= check(state == STATE_BALANCING, "re-arms when held upright");
   plant.held = false;
@@ -350,15 +378,43 @@ static bool scenarioScore() {
   plant.omega -= 0.5;
   run(4);
   send("SCMD Throttle 100");
-  run(5);
+  run(3);
+  // Speed tracking: mean |speed error| over the next 3 s, as a fraction of the target.
+  double target = cfg.Maxthrottle / 100 * cfg.speedFeedForward;  // fraction of full speed
+#if MOTOR_TYPE == MOTOR_STEPPER
+  double full = cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
+#else
+  double full = plant.vMax;
+#endif
+  double trackErr = 0;
+  for (int i = 0; i < 300; i++) {
+    run(0.01);
+    trackErr += fabs((plant.vl + plant.vr) / 2 / full - target) / target / 300;
+  }
   send("SCMD Throttle -100");
   run(5);
   send("SCMD Throttle 0");
   double x0 = plant.x;
   run(8);
-  printf("SCORE %d %.3f %.3f %.3f %.3f\n", stats.falls + (state != STATE_BALANCING), rmsDeg(), stats.maxAbsDeg,
-         fabs(plant.x - x0), fabs((plant.vl + plant.vr) / 2));
+  printf("SCORE %d %.3f %.3f %.3f %.3f %.3f\n", stats.falls + (state != STATE_BALANCING), rmsDeg(), stats.maxAbsDeg,
+         fabs(plant.x - x0), fabs((plant.vl + plant.vr) / 2), trackErr);
   return true;
+}
+
+// A single run showing everything, for plotting: SIM_CSV=out.csv ./sim_stepper demo
+static bool scenarioDemo() {
+  boot();
+  startBalancing(3);     // let go 3 deg off
+  run(5);
+  plant.omega += 0.5;    // shove forward
+  run(4);
+  send("SCMD Throttle 100");
+  run(6);
+  send("SCMD Throttle -100");
+  run(6);
+  send("SCMD Throttle 0");
+  run(6);
+  return state == STATE_BALANCING;
 }
 
 static bool scenarioCommands() {
@@ -455,7 +511,8 @@ int main(int argc, char **argv) {
     { "balance", scenarioBalance },   { "push", scenarioPush },
     { "drive", scenarioDrive },       { "fall", scenarioFall },
     { "autotune", scenarioAutotune }, { "commands", scenarioCommands },
-    { "eeprom", scenarioEeprom },     { "score", scenarioScore },     { "motortest", scenarioMotorTest },
+    { "eeprom", scenarioEeprom },     { "score", scenarioScore },
+    { "demo", scenarioDemo },     { "motortest", scenarioMotorTest },
   };
   if (argc < 2) {
     printf("usage: %s <scenario>\n", argv[0]);

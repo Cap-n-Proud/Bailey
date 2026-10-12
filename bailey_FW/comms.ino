@@ -120,7 +120,7 @@ static const char P_telemetryPeriod[] PROGMEM = "telemetryPeriod";
 static const IntParam intParams[] = {
   { P_motorLeftMinimumSpeed, &cfg.motorLeftMinimumSpeed, 1, 0, 254 },
   { P_motorRightMinimumSpeed, &cfg.motorRightMinimumSpeed, 1, 0, 254 },
-  { P_imuAxis, &cfg.imuAxis, 1, 1, 2 },
+  { P_imuAxis, &cfg.imuAxis, 1, 0, 2 },
   { P_imuInvert, &cfg.imuInvert, 1, 0, 1 },
   { P_motorLeftInvert, &cfg.motorLeftInvert, 1, 0, 1 },
   { P_motorRightInvert, &cfg.motorRightInvert, 1, 0, 1 },
@@ -272,9 +272,9 @@ void remoteInit() {
 void telemetryTX() {
   // Kept short (< 64 chars, the serial TX buffer) so printing never blocks the control loop.
   Serial.print('T');
-  printField(ypr[0], 1);
+  printField(yaw, 1);
   printField(pitch, 2);
-  printField(ypr[cfg.imuAxis == 2 ? 1 : 2], 1);
+  printField(roll, 1);
   printField(pitchRate, 1);
   printField(iste, 3);
   printField(leftSpeed, 1);

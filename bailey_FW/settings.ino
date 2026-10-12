@@ -9,21 +9,22 @@ void loadDefaultSettings() {
   cfg.version = SETTINGS_VERSION;
 
   // Gains from an LQR design of the robot, refined and checked in the simulator
-  // (test/) over a range of motor lags, body heights, IMU noise and offsets.
+  // (test/) over a range of motor lags, body heights, IMU noise and offsets,
+  // with the MPU-6050 complementary filter in the loop.
 #if MOTOR_TYPE == MOTOR_DC
-  cfg.anglePIDConKp = 22.0;
+  cfg.anglePIDConKp = 16.0;
   cfg.anglePIDConKi = 6.0;
   cfg.anglePIDConKd = 3.5;
   cfg.speedPIDKp = 0.12;
-  cfg.speedPIDKi = 0.015;
+  cfg.speedPIDKi = 0.02;
 #else
   // Steppers follow the commanded speed exactly, so the integral term does
   // most of the work.
-  cfg.anglePIDConKp = 24.0;
-  cfg.anglePIDConKi = 30.0;
-  cfg.anglePIDConKd = 1.0;
-  cfg.speedPIDKp = 0.045;
-  cfg.speedPIDKi = 0.035;
+  cfg.anglePIDConKp = 12.0;
+  cfg.anglePIDConKi = 12.0;
+  cfg.anglePIDConKd = 1.3;
+  cfg.speedPIDKp = 0.15;
+  cfg.speedPIDKi = 0.02;
 #endif
   cfg.anglePIDAggKp = cfg.anglePIDConKp * 1.3f;
   cfg.anglePIDAggKi = cfg.anglePIDConKi * 1.3f;
@@ -51,7 +52,7 @@ void loadDefaultSettings() {
   cfg.stepperMaxSpeed = 4000;     // 1/8 microstepping: 1600 steps/rev -> 2.5 rev/s
   cfg.stepperMaxAccel = 40000;
 
-  cfg.imuAxis = 1;
+  cfg.imuAxis = 0;
   cfg.imuInvert = 0;
   cfg.motorLeftInvert = 0;
   cfg.motorRightInvert = 0;

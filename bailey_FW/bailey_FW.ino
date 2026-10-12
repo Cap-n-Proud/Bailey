@@ -10,16 +10,13 @@
 // forward. Use the imu*/motor*/encoder*Invert settings to make the hardware match.
 
 #include <Wire.h>
-#include <SPI.h>
 #include <EEPROM.h>
-#include <I2Cdev.h>
-#include <MPU60X0.h>
-#include <MS561101BA.h>
-#include <HMC58X3.h>
-#include "FreeIMU.h"
-#include "bailey.h"    // must come before the MOTOR_TYPE checks below
+#include <MPU6050.h>    // Electronic Cats MPU6050 (maintained i2cdevlib): https://github.com/ElectronicCats/mpu6050
+#include "bailey.h"     // must come before the MOTOR_TYPE checks below
 #if MOTOR_TYPE == MOTOR_DC
-#include <Encoder.h>   // https://www.pjrc.com/teensy/td_libs_Encoder.html
+#include <Encoder.h>    // https://www.pjrc.com/teensy/td_libs_Encoder.html
+#else
+#include <FastAccelStepper.h>  // https://github.com/gin66/FastAccelStepper
 #endif
 
 Settings cfg;
@@ -27,10 +24,10 @@ Pid anglePID;
 Pid speedPID;
 
 // Sensors
-float ypr[3];                 // yaw, pitch, roll from the IMU (deg)
 float pitch = 0;              // balance angle relative to the calibrated zero (deg)
 float pitchRaw = 0;           // balance angle as read from the IMU (deg)
-float pitchRate = 0;          // deg/s
+float pitchRate = 0;          // deg/s, straight from the gyro
+float yaw = 0, roll = 0;      // telemetry only (deg)
 float leftSpeed = 0, rightSpeed = 0;   // % of full speed
 float wheelSpeed = 0;         // filtered average, input of the speed PID
 
@@ -70,8 +67,9 @@ void setup() {
   motorsSetup();
   motorsStop();
 
-  // Derivative low-pass at 200 Hz: 0.3 -> ~11 Hz cutoff, keeps IMU noise out of the D term.
-  anglePID.dFilter = 0.3f;
+  // The angle D term uses the gyro rate, which is clean; the speed loop's
+  // derivative is computed from noisy wheel speed and filtered harder.
+  anglePID.dFilter = 0.5f;
   speedPID.dFilter = 0.2f;
   anglePID.reset();
   speedPID.reset();
@@ -195,7 +193,7 @@ void controlStep(float dt) {
   }
   anglePID.outMin = -cfg.anglePIDOutputLimit;
   anglePID.outMax = cfg.anglePIDOutputLimit;
-  angleOutput = -anglePID.compute(angleSetpoint, pitch, dt);
+  angleOutput = -anglePID.compute(angleSetpoint, pitch, dt, pitchRate);
 
   // Feed the speed setpoint forward: wheel speed in % roughly equals motor command
   // in %, so the PIDs only have to correct the difference instead of slowly
