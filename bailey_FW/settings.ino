@@ -60,6 +60,26 @@ void loadDefaultSettings() {
 
   cfg.autotuneAmplitude = 0.7;
 
+#if MOTOR_TYPE == MOTOR_STEPPER
+  cfg.controller = CONTROLLER_LQR;
+#else
+  cfg.controller = CONTROLLER_PID;
+#endif
+  // LQR weights, observer and Kalman settings: chosen in the simulator over
+  // robots of 12-30 cm, IMU offsets of +/-2 deg and up to 4x the expected
+  // noise, then checked for gyro drift, payload shifts and 7-45 cm robots.
+  cfg.lqrMaxPosition = 0.1;
+  cfg.lqrMaxSpeed = 0.5;
+  cfg.lqrMaxAngle = 4.5;
+  cfg.lqrMaxRate = 10;
+  cfg.lqrMaxAccel = 2.7;
+  cfg.lqrAccelLimit = 6;           // below the steppers' ~7 m/s^2 (stepperMaxAccel)
+  cfg.dobBandwidth = 2;
+
+  cfg.kalmanQAngle = 0.002;
+  cfg.kalmanQBias = 0.003;
+  cfg.kalmanR = 3;
+
   cfg.debug = 0;
   cfg.debugSampleRate = 500;
   cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud

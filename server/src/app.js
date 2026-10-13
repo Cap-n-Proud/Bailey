@@ -6,6 +6,7 @@
 //     telemetry robot telemetry values (+ state name)
 //     gains     { raw, gains } current gains
 //     firmware  firmware info (SYS line)
+//     lqr       { gain: [4], length } LQR gain in use (steppers)
 //     autotune  { phase, result }
 //     event     { time, kind, text } robot events, errors, motor tests, echoes
 //     console   raw lines to/from the robot, except telemetry
@@ -52,6 +53,7 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
     gains: null,
     rawGains: null,
     firmware: null,
+    lqr: null,
     autotune: { phase: 'IDLE', result: null },
     link: { connected: false, port: config.serial.port, error: null },
   };
@@ -119,9 +121,16 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
         robot.firmware = msg.values;
         io.emit('firmware', msg.values);
         break;
+      case 'lqr':
+        robot.lqr = { gain: msg.gain, length: msg.length };
+        io.emit('lqr', robot.lqr);
+        break;
       case 'header':
         // Headers come at boot and after READ RemoteInit; ask for the values.
-        if (msg.kind === 'PID') setTimeout(() => { try { send(read('PIDParamTX')); } catch {} }, 50);
+        if (msg.kind === 'PID') {
+          setTimeout(() => { try { send(read('PIDParamTX')); } catch {} }, 50);
+          setTimeout(() => { try { send(read('LQRParamTX')); } catch {} }, 80);
+        }
         if (msg.kind === 'SYS') setTimeout(() => { try { send(read('SYSParamTX')); } catch {} }, 100);
         break;
       case 'event':

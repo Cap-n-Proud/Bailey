@@ -59,6 +59,7 @@
         <div><span class="label">Wheel speed</span><span class="value" id="speed">–</span></div>
         <div><span class="label">Loop time</span><span class="value" id="loopTime" title="Worst control loop time since the last telemetry; must stay under 5000 µs">–</span></div>
         <div><span class="label">Wobble</span><span class="value" id="wobble" title="Integral of squared angle error per telemetry period (deg²·s)">–</span></div>
+        <div><span class="label">Balance angle</span><span class="value" id="balAngle" title="Pitch the disturbance observer says the robot balances at (LQR). Moves when the load shifts.">–</span></div>
       </div>
       <figure class="chart">
         <figcaption>Pitch (°), last 20 s</figcaption>
@@ -73,6 +74,14 @@
     <!-- Setup & tuning actions -->
     <section class="card">
       <h2>Tuning</h2>
+      <div class="controller">
+        <span class="label">Controller</span>
+        <div class="segmented" role="group" aria-label="Balance controller">
+          <button id="ctrlLqr" data-controller="1" title="LQR + disturbance observer (steppers)">LQR</button>
+          <button id="ctrlPid" data-controller="0" title="Cascaded PIDs">PID</button>
+        </div>
+        <span class="meta" id="lqrInfo"></span>
+      </div>
       <div class="autotune" id="autotune">
         <button id="autotuneBtn">Autotune</button>
         <div class="autotune-status">
@@ -93,7 +102,7 @@
         <button type="submit">Set gains</button>
       </form>
       <details>
-        <summary>Gains</summary>
+        <summary>PID gains <span class="meta">(used by the PID controller)</span></summary>
         <table class="gains" id="gainsTable">
           <thead><tr><th></th><th>Kp</th><th>Ki</th><th>Kd</th></tr></thead>
           <tbody>

@@ -56,6 +56,8 @@ test('events, errors, autotune and motor tests', () => {
   assert.equal(r.result.length, 0.202);
   assert.equal(r.result.zero, 1.72);
   assert.deepEqual(p.parse('TEST,40.0,39.5'), { type: 'motorTest', left: 40, right: 39.5 });
+  assert.deepEqual(p.parse('LQR,-8.926,-15.944,-105.718,-11.577,0.200'),
+    { type: 'lqr', gain: [-8.926, -15.944, -105.718, -11.577], length: 0.2 });
   assert.equal(p.parse('*** speedRamp = 30.0000').type, 'config');
   assert.equal(p.parse(''), null);
 });

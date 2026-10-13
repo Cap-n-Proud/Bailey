@@ -70,6 +70,16 @@ static const char P_stepsPerRev[] PROGMEM = "stepsPerRev";
 static const char P_encoderCountsPerRev[] PROGMEM = "encoderCountsPerRev";
 static const char P_wheelDiameter[] PROGMEM = "wheelDiameter";
 static const char P_autotuneAmplitude[] PROGMEM = "autotuneAmplitude";
+static const char P_lqrMaxPosition[] PROGMEM = "lqrMaxPosition";
+static const char P_lqrMaxSpeed[] PROGMEM = "lqrMaxSpeed";
+static const char P_lqrMaxAngle[] PROGMEM = "lqrMaxAngle";
+static const char P_lqrMaxRate[] PROGMEM = "lqrMaxRate";
+static const char P_lqrMaxAccel[] PROGMEM = "lqrMaxAccel";
+static const char P_lqrAccelLimit[] PROGMEM = "lqrAccelLimit";
+static const char P_dobBandwidth[] PROGMEM = "dobBandwidth";
+static const char P_kalmanQAngle[] PROGMEM = "kalmanQAngle";
+static const char P_kalmanQBias[] PROGMEM = "kalmanQBias";
+static const char P_kalmanR[] PROGMEM = "kalmanR";
 
 static const FloatParam floatParams[] = {
   { P_speedPIDKp, &cfg.speedPIDKp, 10000, true },
@@ -99,6 +109,16 @@ static const FloatParam floatParams[] = {
   { P_encoderCountsPerRev, &cfg.encoderCountsPerRev, 1, false },
   { P_wheelDiameter, &cfg.wheelDiameter, 1, false },
   { P_autotuneAmplitude, &cfg.autotuneAmplitude, 100, false },
+  { P_lqrMaxPosition, &cfg.lqrMaxPosition, 1, false },
+  { P_lqrMaxSpeed, &cfg.lqrMaxSpeed, 1, false },
+  { P_lqrMaxAngle, &cfg.lqrMaxAngle, 1, false },
+  { P_lqrMaxRate, &cfg.lqrMaxRate, 1, false },
+  { P_lqrMaxAccel, &cfg.lqrMaxAccel, 1, false },
+  { P_lqrAccelLimit, &cfg.lqrAccelLimit, 1, false },
+  { P_dobBandwidth, &cfg.dobBandwidth, 1, false },
+  { P_kalmanQAngle, &cfg.kalmanQAngle, 1, false },
+  { P_kalmanQBias, &cfg.kalmanQBias, 1, false },
+  { P_kalmanR, &cfg.kalmanR, 1, false },
 };
 
 struct IntParam {
@@ -118,6 +138,7 @@ static const char P_encoderLeftInvert[] PROGMEM = "encoderLeftInvert";
 static const char P_encoderRightInvert[] PROGMEM = "encoderRightInvert";
 static const char P_debugSampleRate[] PROGMEM = "debugSampleRate";
 static const char P_telemetryPeriod[] PROGMEM = "telemetryPeriod";
+static const char P_controller[] PROGMEM = "controller";
 
 static const IntParam intParams[] = {
   { P_motorLeftMinimumSpeed, &cfg.motorLeftMinimumSpeed, 1, 0, 254 },
@@ -130,6 +151,7 @@ static const IntParam intParams[] = {
   { P_encoderRightInvert, &cfg.encoderRightInvert, 1, 0, 1 },
   { P_debugSampleRate, &cfg.debugSampleRate, 2, 50, 10000 },
   { P_telemetryPeriod, &cfg.telemetryPeriod, 2, 50, 10000 },
+  { P_controller, &cfg.controller, 1, 0, 1 },
 };
 
 #define COUNT(a) (sizeof(a) / sizeof(a[0]))
@@ -147,7 +169,15 @@ static void unknownCommand(const char *arg, const char *value) {
 static bool setParam(const char *arg, const char *value) {
   for (uint8_t i = 0; i < COUNT(floatParams); i++) {
     if (is(arg, floatParams[i].name)) {
-      *floatParams[i].value = atof(value) / floatParams[i].scale;
+      float v = atof(value) / floatParams[i].scale;
+      // LQR weights must stay positive; the new gain is solved when the motors are off.
+      if (strncmp_P(arg, PSTR("lqrMax"), 6) == 0) {
+        if (v <= 0) return true;
+        lqrWeightsChanged = true;
+        if (state == STATE_BALANCING) Serial.println(F("E, LQR weights apply when the motors are off"));
+      }
+      if (floatParams[i].value == &cfg.calibratedZeroAngle) lqrZeroShifted(v - cfg.calibratedZeroAngle);
+      *floatParams[i].value = v;
       if (floatParams[i].pid) PIDParamTX();
       return true;
     }
@@ -170,7 +200,20 @@ static bool setParam(const char *arg, const char *value) {
 static void setCommand(const char *arg, const char *value) {
   float v = atof(value);
 
-  if (setParam(arg, value)) {
+  if (is(arg, P_controller)) {
+    // Switching controllers mid-balance would hand over a half-wound state.
+    if (state == STATE_BALANCING) {
+      Serial.println(F("E, switch controller with the motors off"));
+      return;
+    }
+    if (MOTOR_TYPE != MOTOR_STEPPER && atoi(value) == CONTROLLER_LQR) {
+      Serial.println(F("E, LQR needs stepper motors"));
+      return;
+    }
+    setParam(arg, value);
+    PIDParamTX();
+    LQRParamTX();
+  } else if (setParam(arg, value)) {
 #if MOTOR_TYPE == MOTOR_STEPPER
     // The gains are physical (gains.ino): if the speed scale changed, recompute them.
     if (is(arg, P_stepperMaxSpeed) || is(arg, P_stepsPerRev) || is(arg, P_wheelDiameter)) {
@@ -206,6 +249,7 @@ static void setCommand(const char *arg, const char *value) {
     cfg.debug = atoi(value) != 0;
   } else if (is(arg, PSTR("CalibrateZero"))) {
     // Hold the robot at its balance point and send "SCMD CalibrateZero 1".
+    lqrZeroShifted(pitchRaw - cfg.calibratedZeroAngle);
     cfg.calibratedZeroAngle = pitchRaw;
     PIDParamTX();
   } else if (is(arg, PSTR("MotorTest"))) {
@@ -263,6 +307,7 @@ void handleLine(char *line) {
     if (!arg) arg = (char *)"";
     if (is(arg, PSTR("RemoteInit"))) remoteInit();
     else if (is(arg, PSTR("PIDParamTX"))) PIDParamTX();
+    else if (is(arg, PSTR("LQRParamTX"))) LQRParamTX();
     else if (is(arg, PSTR("SYSParamTX"))) SYSParamTX();
     else if (is(arg, PSTR("printConfig"))) printConfig();
     else unknownCommand(arg, NULL);
@@ -281,14 +326,15 @@ static void printField(float v, uint8_t decimals) {
 void remoteInit() {
   // The server builds its dictionaries from these headers, so the order must
   // match telemetryTX(), PIDParamTX() and SYSParamTX().
-  Serial.println(F("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal"));
+  Serial.println(F("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal,balAngle"));
   Serial.println(F("PIDH,speedPIDKp,speedPIDKi,speedPIDKd,anglePIDConKp,anglePIDConKi,anglePIDConKd,"
-                   "anglePIDAggKp,anglePIDAggKi,anglePIDAggKd,TriggerAngleAggressive,calibratedZeroAngle,OPT"));
+                   "anglePIDAggKp,anglePIDAggKi,anglePIDAggKd,TriggerAngleAggressive,calibratedZeroAngle,OPT,controller"));
   Serial.println(F("SYSH,FirmwareVersion"));
 }
 
 void telemetryTX() {
-  // Kept short (< 64 chars, the serial TX buffer) so printing never blocks the control loop.
+  // Short (~65 chars): at 115200 baud the 64-byte TX buffer drains in ~6 ms, so
+  // printing never holds up the control loop for more than a fraction of a ms.
   Serial.print('T');
   printField(yaw, 1);
   printField(pitch, 2);
@@ -300,7 +346,9 @@ void telemetryTX() {
   Serial.print(',');
   Serial.print(maxLoopUs);
   Serial.print(',');
-  Serial.println((int)state);
+  Serial.print((int)state);
+  printField(balanceAngle, 2);     // pitch the disturbance observer says the robot balances at
+  Serial.println();
   iste = 0;
   maxLoopUs = 0;
 }
@@ -353,7 +401,8 @@ void PIDParamTX() {
   Serial.print(lround(cfg.anglePIDAggKd * 100)); Serial.print(',');
   Serial.print(lround(cfg.TriggerAngleAggressive * 100)); Serial.print(',');
   Serial.print(lround(cfg.calibratedZeroAngle * 100)); Serial.print(',');
-  Serial.println(MOTOR_TYPE);
+  Serial.print(MOTOR_TYPE); Serial.print(',');
+  Serial.println(cfg.controller);
 }
 
 void SYSParamTX() {

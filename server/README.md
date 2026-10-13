@@ -19,11 +19,12 @@ The web UI
 
 * **Drive:** **Motors on** / **Stop**, and a joystick (mouse, touch or arrow keys; Space = stop).
   The robot starts balancing once it's held upright.
-* **Live:** pitch and wheel speed charts (20 s), the control loop time (must stay below 5000 µs)
-  and the wobble.
+* **Live:** pitch and wheel speed charts (20 s), the control loop time (must stay below 5000 µs),
+  the wobble, and the balance angle found by the disturbance observer.
 * **Video:** a camera stream with pitch and heading overlaid. The camera only runs while someone
   is watching.
 * **Tuning:**
+  * **Controller:** LQR (default on steppers) or PID, with the LQR gain and pendulum length shown.
   * **Autotune** (about 30 s, while balancing) measures the robot and sets its gains and zero.
   * **Calibrate zero**, **Motor test**, **Save to EEPROM** and **Load defaults**.
   * **Pendulum length**, if you've measured it.

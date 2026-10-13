@@ -34,6 +34,7 @@ SimWire Wire;
 #include "../comms.ino"
 #include "../gains.ino"
 #include "../imu.ino"
+#include "../lqr.ino"
 #include "../motors.ino"
 #include "../settings.ino"
 
@@ -53,6 +54,7 @@ struct Plant {
   double noiseDeg = 0.05;       // scales accelerometer and gyro noise
   double imuHeight = 0.12;      // m above the axle: it also feels the body's rotation
   double gyroBiasDps = 0.3;     // residual bias after the boot calibration
+  double gyroBiasDrift = 0;     // deg/s per s, e.g. the chip warming up
   double sensorLag = 0.0048;    // s, MPU-6050 low-pass filter delay at DLPF_BW_42
   double slip = 1.0;            // ground motion / wheel motion (< 1: wheels slipping)
   double lagOmega = 0, lagFy = 0, lagFz = 9.81;
@@ -64,6 +66,7 @@ struct Plant {
   bool held = true;
   double alpha = 0;
   double pickupRate = 0;        // rad/s while someone is turning the robot by hand
+  double disturbance = 0;       // rad/s^2 on the body: payload off-centre, someone leaning on it
   std::mt19937 rng{42};
   std::normal_distribution<double> noise{0, 1};
 
@@ -100,7 +103,7 @@ struct Plant {
       vr += ar * dt;
     } else {
       double a = (al + ar) / 2;
-      alpha = (g * sin(theta) - a * cos(theta)) / effLength;
+      alpha = (g * sin(theta) - a * cos(theta)) / effLength + disturbance;
       omega += alpha * dt;
       theta += omega * dt;
       vl += al * dt;
@@ -123,6 +126,7 @@ struct Plant {
     double t = theta + mountOffsetDeg * M_PI / 180;
     double fy = cos(t) * a + sin(t) * g;
     double fz = cos(t) * g - sin(t) * a;
+    gyroBiasDps += gyroBiasDrift * dt;
     double lagK = std::min(1.0, dt / sensorLag);
     lagFy += (fy - lagFy) * lagK;
     lagFz += (fz - lagFz) * lagK;
@@ -229,6 +233,7 @@ static void boot() {
   if (getenv("SIM_LAG")) plant.sensorLag = atof(getenv("SIM_LAG"));
   if (getenv("SIM_IMU_HEIGHT")) plant.imuHeight = atof(getenv("SIM_IMU_HEIGHT"));
   if (getenv("SIM_BIAS")) plant.gyroBiasDps = atof(getenv("SIM_BIAS"));
+  if (getenv("SIM_DIST")) plant.disturbance = atof(getenv("SIM_DIST"));
   heldThrottle.clear();
   heldSteer.clear();
   remoteConnected = true;
@@ -241,6 +246,15 @@ static void boot() {
   imuStarted = false;
   Serial.onLine = onLine;
   setup();
+  if (getenv("SIM_CONTROLLER")) cfg.controller = atoi(getenv("SIM_CONTROLLER"));
+  // LQR="maxPos maxSpeed maxAngle maxRate maxAccel dobBandwidth" overrides the LQR settings.
+  if (getenv("LQR")) {
+    sscanf(getenv("LQR"), "%f %f %f %f %f %f", &cfg.lqrMaxPosition, &cfg.lqrMaxSpeed, &cfg.lqrMaxAngle,
+           &cfg.lqrMaxRate, &cfg.lqrMaxAccel, &cfg.dobBandwidth);
+    lqrWeightsChanged = true;
+  }
+  if (getenv("KALMAN")) sscanf(getenv("KALMAN"), "%f %f %f", &cfg.kalmanQAngle, &cfg.kalmanQBias, &cfg.kalmanR);
+  if (getenv("SIM_SCALE")) applyGainsForLength(plant.effLength);   // as if the autotuner had measured L
   // GAINS=aKp,aKi,aKd,sKp,sKi,sLimit[,trigger,aggFactor] overrides the defaults (used by tuning scripts).
   if (getenv("GAINS")) {
     float g[8];
@@ -483,7 +497,9 @@ static bool scenarioAutotune() {
 static bool scenarioScaling() {
 #if MOTOR_TYPE == MOTOR_STEPPER
   bool ok = true;
-  for (double L : { 0.07, 0.12, 0.2, 0.32, 0.45 }) {
+  std::vector<double> lengths = { 0.07, 0.12, 0.2, 0.32, 0.45 };
+  if (getenv("SCALING_L")) lengths = { atof(getenv("SCALING_L")) };
+  for (double L : lengths) {
     double rmsFixed = 0, rmsScaled = 0;
     int fallsFixed = 0, fallsScaled = 0;
     for (int scaled = 0; scaled < 2; scaled++) {
@@ -617,6 +633,96 @@ static bool scenarioLive() {
   }
 }
 
+// Prints the LQR gain solved by the firmware's own Riccati solver (checked
+// against SciPy in tune tooling): ./sim_stepper lqrgain <L> <qp> <qv> <qa> <qr> <r>
+static bool scenarioLqrGain() {
+  float L = 0.2, q[4] = { 1 / 0.09f, 1 / 0.09f, 1 / sq(2 / 57.29578f), 1 / sq(30 / 57.29578f) }, r = 1 / 9.0f;
+  if (getenv("LQR_ARGS")) sscanf(getenv("LQR_ARGS"), "%f %f %f %f %f %f", &L, &q[0], &q[1], &q[2], &q[3], &r);
+  float K[4];
+  bool ok = lqrSolve(L, 0.005f, q, r, K);
+  printf("K %.6f %.6f %.6f %.6f\n", K[0], K[1], K[2], K[3]);
+  return ok;
+}
+
+// Disturbance observer: a payload shifts the centre of mass mid-run. With the
+// observer the robot finds its new balance angle and holds position.
+static bool scenarioDisturbance() {
+#if MOTOR_TYPE == MOTOR_STEPPER
+  bool ok = true;
+  const double L = 0.2, offsetDeg = 2.5;
+  const double dist = -9.81 * sin(offsetDeg * M_PI / 180) / L;   // same as the mass moving 2.5 deg back
+  double moved[2] = { 0, 0 };
+  for (int withObserver = 0; withObserver < 2; withObserver++) {
+    plant = Plant();
+    received.clear();
+    boot();
+    plant.effLength = L;
+    if (!withObserver) cfg.dobBandwidth = 0;
+    startBalancing(0);
+    run(6);
+    double x0 = plant.x;
+    stats.reset();
+    plant.disturbance = dist;
+    run(12);
+    moved[withObserver] = plant.x - x0;
+    printf("  observer %s: moved %+.3f m, balance angle %.2f deg, true tilt %.2f deg, falls %d\n",
+           withObserver ? "on " : "off", moved[withObserver], balanceAngle, plant.theta * 180 / M_PI, stats.falls);
+    ok &= check(stats.falls == 0 && state == STATE_BALANCING, withObserver ? "observer on: still balancing" : "observer off: still balancing");
+    if (withObserver) {
+      // The payload pulls back, so the robot must lean forward by offsetDeg; the IMU
+      // reads that plus its own mounting offset.
+      double expected = uprightReading + offsetDeg;
+      ok &= check(fabs(balanceAngle + cfg.calibratedZeroAngle - expected) < 0.3, "observer finds the new balance angle (0.3 deg)");
+    }
+  }
+  ok &= check(fabs(moved[1]) < 0.05, "observer on: holds position (< 5 cm)");
+  ok &= check(fabs(moved[1]) < fabs(moved[0]) / 3, "observer cuts the drift by 3x or more");
+  return ok;
+#else
+  return check(true, "steppers only");
+#endif
+}
+
+// Kalman filter: the gyro bias drifts as the chip warms up; pitch must stay accurate.
+static bool scenarioKalman() {
+  plant = Plant();
+  received.clear();
+  boot();
+  startBalancing(0);
+  run(3);
+  plant.gyroBiasDrift = 0.1;        // +2 deg/s over 20 s
+  double worst = 0;
+  for (int i = 0; i < 2000; i++) {
+    run(0.01);
+    if (i > 300) worst = std::max(worst, fabs(pitchRaw - (plant.theta * 180 / M_PI + plant.mountOffsetDeg)));
+  }
+  printf("  bias now %.2f deg/s, estimated %.2f; worst pitch error %.2f deg\n", plant.gyroBiasDps, imuGyroBias, worst);
+  bool ok = check(worst < 0.4, "pitch stays within 0.4 deg while the gyro bias drifts");
+  ok &= check(fabs(imuGyroBias - plant.gyroBiasDps) < 0.3, "gyro bias tracked within 0.3 deg/s");
+  ok &= check(stats.falls == 0 && state == STATE_BALANCING, "still balancing");
+  return ok;
+}
+
+// The firmware's Riccati solver against SciPy's solve_discrete_are (same model, 5 ms).
+static bool scenarioLqrSolver() {
+  struct { float L, q[4], r, K[4]; } cases[] = {
+    { 0.2f, { 1 / 0.09f, 1 / 0.09f, 1 / sq(2 / 57.29578f), 1 / sq(30 / 57.29578f) }, 1 / 9.0f, { -8.926f, -15.9437f, -105.7175f, -11.5772f } },
+    { 0.1f, { 100, 1, 500, 1 }, 1, { -9.2558f, -7.7844f, -41.4681f, -3.7442f } },
+    { 0.4f, { 1, 10, 1000, 10 }, 0.1f, { -2.8818f, -12.205f, -121.9978f, -18.7427f } },
+  };
+  bool ok = true;
+  for (auto &c : cases) {
+    float K[4];
+    bool solved = lqrSolve(c.L, 0.005f, c.q, c.r, K);
+    double err = 0;
+    for (int i = 0; i < 4; i++) err = std::max(err, (double)fabs((K[i] - c.K[i]) / c.K[i]));
+    char what[80];
+    snprintf(what, sizeof what, "L = %.1f: gain matches SciPy (rel. error %.1e)", c.L, err);
+    ok &= check(solved && err < 1e-3, what);
+  }
+  return ok;
+}
+
 static bool scenarioCommands() {
   boot();
   bool ok = true;
@@ -651,9 +757,9 @@ static bool scenarioCommands() {
   bool telemetryOk = false;
   for (auto &l : received)
     if (l.rfind("T,", 0) == 0)
-      telemetryOk = count(l) == count("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal") &&
-                    l.size() < 64;
-  ok &= check(telemetryOk, "telemetry line matches header and fits the 64 byte TX buffer");
+      telemetryOk = count(l) == count("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal,balAngle") &&
+                    l.size() < 80;
+  ok &= check(telemetryOk, "telemetry line matches header and stays short");
 
   send("SCMD Throttle 50");
   run(0.01);
@@ -712,9 +818,10 @@ int main(int argc, char **argv) {
     { "balance", scenarioBalance },   { "push", scenarioPush },
     { "drive", scenarioDrive },       { "fall", scenarioFall },
     { "autotune", scenarioAutotune }, { "commands", scenarioCommands },
-    { "scaling", scenarioScaling },
+    { "scaling", scenarioScaling },   { "disturbance", scenarioDisturbance },
+    { "kalman", scenarioKalman },     { "lqrsolver", scenarioLqrSolver },
     { "eeprom", scenarioEeprom },     { "score", scenarioScore },
-    { "demo", scenarioDemo },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
+    { "demo", scenarioDemo },         { "lqrgain", scenarioLqrGain },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
   };
   if (argc < 2) {
     printf("usage: %s <scenario>\n", argv[0]);

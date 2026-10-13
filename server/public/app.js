@@ -28,7 +28,12 @@ function emit(event, payload) {
 }
 
 const command = (name, value = 1) => emit('command', { name, value });
-const fmt = (v, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '–');
+// Number with d decimals; never "-0.0".
+const fmt = (v, d = 1) => {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '–';
+  const s = v.toFixed(d);
+  return Number(s) === 0 ? (0).toFixed(d) : s;
+};
 const timeOf = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
 
 // ---------- header ----------
@@ -110,6 +115,7 @@ function onTelemetry(t) {
   $('loopTime').textContent = `${t.LoopT} µs`;
   $('loopTime').style.color = t.LoopT > 5000 ? css('--bad') : '';
   $('wobble').textContent = fmt(t.dISTE, 3);
+  $('balAngle').textContent = typeof t.balAngle === 'number' ? `${fmt(t.balAngle, 2)}°` : '–';
   $('hudPitch').textContent = fmt(t.pitch, 1);
   $('hudHeading').textContent = fmt(t.yaw, 0);
   $('horizon').style.transform = `rotate(${-t.pitch}deg)`;
@@ -123,9 +129,29 @@ function animate() {
 }
 requestAnimationFrame(animate);
 
+// ---------- controller ----------
+function renderController() {
+  const c = robot.gains?.controller;
+  const isStepper = robot.gains?.OPT === 2;
+  $('ctrlLqr').classList.toggle('on', c === 1);
+  $('ctrlPid').classList.toggle('on', c === 0);
+  $('ctrlLqr').disabled = !isStepper;
+  const l = robot.lqr;
+  $('lqrInfo').textContent = c === 1 && l
+    ? `K = ${l.gain.map((k) => k.toFixed(1)).join(', ')} for L = ${(l.length * 100).toFixed(1)} cm`
+    : '';
+}
+for (const b of document.querySelectorAll('[data-controller]')) {
+  b.onclick = () => {
+    if (robot.telemetry?.state === 'BAL') { toast('Switch the controller with the motors off'); return; }
+    command('controller', Number(b.dataset.controller));
+  };
+}
+
 // ---------- gains ----------
 function renderGains() {
   if (!robot.gains) return;
+  renderController();
   for (const input of document.querySelectorAll('[data-gain]')) {
     if (document.activeElement === input) continue;
     const v = robot.gains[input.dataset.gain];
@@ -364,6 +390,7 @@ socket.on('snapshot', (s) => {
 });
 socket.on('telemetry', onTelemetry);
 socket.on('gains', (g) => { robot.gains = g.gains; renderGains(); });
+socket.on('lqr', (l) => { robot.lqr = l; renderController(); });
 socket.on('firmware', (f) => { robot.firmware = f; $('firmware').textContent = `firmware ${f.FirmwareVersion}`; });
 socket.on('link', (l) => { robot.link = l; renderLink(); });
 socket.on('autotune', (a) => {

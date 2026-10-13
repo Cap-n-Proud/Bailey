@@ -122,6 +122,16 @@ void loop() {
   motorTestReport();
 }
 
+// LQR needs the steppers' exact acceleration; DC motors always use the PIDs.
+static bool wantLqr() {
+  return MOTOR_TYPE == MOTOR_STEPPER && cfg.controller == CONTROLLER_LQR;
+}
+
+// ...and a solved gain: if the Riccati solver ever failed, balance with the PIDs.
+static bool useLqr() {
+  return wantLqr() && lqrReady();
+}
+
 static void updateState() {
   unsigned long nowMs = millis();
   bool upright = fabs(pitch) < UPRIGHT_ANGLE;
@@ -144,6 +154,7 @@ static void updateState() {
       if (nowMs - uprightSince >= UPRIGHT_HOLD_MS) {
         anglePID.reset();
         speedPID.reset();
+        if (useLqr()) lqrReset();
         uprightSince = 0;
         state = STATE_BALANCING;
         setEvent("Balancing");
@@ -161,27 +172,8 @@ static void updateState() {
   }
 }
 
-void controlStep(float dt) {
-  imuRead(dt);
-  motorsUpdateSpeed(dt);
-  updateState();
-
-  if (state != STATE_BALANCING) {
-    angleOutput = 0;
-    angleSetpoint = 0;
-    speedSetpoint = 0;
-    if (state == STATE_DISARMED && millis() < motorTestUntil)
-      motorsSet(motorTestPower, motorTestPower);
-    else
-      motorsStop();
-    return;
-  }
-
-  // Speed loop: lean forward to speed up, backward to slow down. The setpoint is
-  // ramped: a sudden jump makes the speed loop overshoot into motor saturation.
-  float target = throttleCmd / 100.0f * cfg.Maxthrottle;
-  float step = cfg.speedRamp * dt;
-  speedSetpoint += constrain(target - speedSetpoint, -step, step);
+// Cascaded PIDs: the speed loop sets the pitch setpoint, the angle loop the motors.
+static float pidStep(float dt, float &angleError) {
   float f = (throttleCmd != 0) ? cfg.speedPIDMoveFactor : 1.0f;
   speedPID.kp = f * cfg.speedPIDKp;
   speedPID.ki = f * cfg.speedPIDKi;
@@ -190,9 +182,9 @@ void controlStep(float dt) {
   speedPID.outMax = cfg.speedPIDOutputLimit;
   angleSetpoint = speedPID.compute(speedSetpoint, wheelSpeed, dt) + autotuneExcitation();
 
-  // Angle loop. The PID drives (setpoint - pitch) to zero; when leaning forward
-  // (pitch > setpoint) its output is negative, and the wheels must go forward.
-  float angleError = pitch - angleSetpoint;
+  // The PID drives (setpoint - pitch) to zero; when leaning forward (pitch >
+  // setpoint) its output is negative, and the wheels must go forward.
+  angleError = pitch - angleSetpoint;
   if (cfg.TriggerAngleAggressive > 0 && fabs(angleError) > cfg.TriggerAngleAggressive) {
     anglePID.kp = cfg.anglePIDAggKp;
     anglePID.ki = cfg.anglePIDAggKi;
@@ -209,7 +201,42 @@ void controlStep(float dt) {
   // Feed the speed setpoint forward: wheel speed in % roughly equals motor command
   // in %, so the PIDs only have to correct the difference instead of slowly
   // integrating up the whole cruise command.
-  float drive = angleOutput + cfg.speedFeedForward * speedSetpoint;
+  return angleOutput + cfg.speedFeedForward * speedSetpoint;
+}
+
+void controlStep(float dt) {
+  imuRead(dt);
+  motorsUpdateSpeed(dt);
+  updateState();
+  if (wantLqr()) lqrMaintain(state == STATE_BALANCING);
+
+  if (state != STATE_BALANCING) {
+    angleOutput = 0;
+    angleSetpoint = 0;
+    speedSetpoint = 0;
+    if (state == STATE_DISARMED && millis() < motorTestUntil)
+      motorsSet(motorTestPower, motorTestPower);
+    else
+      motorsStop();
+    return;
+  }
+
+  // Speed setpoint from the throttle, ramped: a sudden jump makes the robot
+  // overshoot into motor saturation.
+  float target = throttleCmd / 100.0f * cfg.Maxthrottle;
+  float step = cfg.speedRamp * dt;
+  speedSetpoint += constrain(target - speedSetpoint, -step, step);
+
+  float angleError;
+  float drive;
+  if (useLqr()) {
+    drive = lqrStep(dt, speedSetpoint / 100.0f * fullSpeedMps(), autotuneExcitation(), angleError);
+    angleOutput = drive;
+    angleSetpoint = pitch - angleError;
+  } else {
+    drive = pidStep(dt, angleError);
+  }
+
   float steer = steerCmd / 100.0f * cfg.Maxsteer;
   motorsSet(drive + steer, drive - steer);
 

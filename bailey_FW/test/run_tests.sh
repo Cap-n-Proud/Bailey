@@ -9,9 +9,14 @@ $CXX $FLAGS -DMOTOR_TYPE=2 -o sim_stepper sim.cpp
 
 fail=0
 for sim in sim_dc sim_stepper; do
-  for s in balance push drive fall autotune scaling commands eeprom motortest; do
+  for s in balance push drive fall autotune scaling disturbance kalman lqrsolver commands eeprom motortest; do
     printf '== %s ' "$sim"
     ./$sim $s || fail=1
   done
+done
+# Steppers default to LQR; keep the PID controller covered too.
+for s in balance push drive fall autotune; do
+  printf '== sim_stepper (PID) '
+  SIM_CONTROLLER=0 ./sim_stepper $s || fail=1
 done
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME TESTS FAILED"; exit 1; }

@@ -31,20 +31,51 @@ Structure
 | `config.h` | Build-time options: motor type (`MOTOR_STEPPER` default, or `MOTOR_DC`), pins, IMU address, loop rate |
 | `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
 | `bailey_FW.ino` | `setup()`, `loop()`, state machine and the 200 Hz balance loop |
-| `imu.ino` | MPU-6050 read + complementary filter, any mounting orientation, zero offset |
+| `imu.ino` | MPU-6050 read + Kalman filter (pitch and gyro bias), any mounting orientation, zero offset |
+| `lqr.ino` | LQR controller (Riccati equation solved on the Arduino) and disturbance observer |
 | `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
 | `comms.ino` | Serial commands, telemetry, PID/SYS lines |
 | `autotune.ino` | Autotuner: measures pendulum length and IMU offset while balancing |
-| `gains.ino` | Gains from the pendulum length (physical units, scaled by dynamic similarity) |
+| `gains.ino` | PID gains from the pendulum length (physical units, scaled by dynamic similarity) |
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
 | `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
 
-Control loop (200 Hz):
+Control loop (200 Hz). There are two controllers, selected with `SCMD controller <1|0>`. Steppers
+use **LQR** by default; DC motors always use the **PIDs**.
 
 ```
-throttle -> speed setpoint (ramped) -> [speed PID] -> pitch setpoint -> [angle PID] -(+ feedforward)-> motors
-                                          ^ wheel speed (encoders)        ^ pitch (IMU)
+LQR (steppers):
+  gyro + accelerometer -> [Kalman] -> pitch, pitch rate (bias-corrected)
+  pitch, rate, wheel acceleration -> [disturbance observer] -> balance angle
+  throttle -> speed/position reference (ramped)
+  a = -K · [position error, speed error, pitch - balance angle, pitch rate] -> integrate -> stepper speed
+
+PID (both):
+  throttle -> speed setpoint (ramped) -> [speed PID] -> pitch setpoint -> [angle PID] -(+ feedforward)-> motors
 ```
+
+**LQR** (`lqr.ino`) treats the robot as an inverted pendulum on wheels whose acceleration it commands
+directly; steppers do exactly what they're told. It weighs position, speed, pitch and pitch rate
+together and finds the gain that keeps them small for the least effort. The trade-off is set by the
+`lqrMax*` settings: how far each quantity may stray, given for a 0.2 m robot. The Riccati equation is
+solved on the Arduino at boot, or when a weight changes with the motors off; it takes about 0.1 s of
+float math. The gain is then rescaled instantly to the measured pendulum length (exact by dynamic
+similarity), so autotune can apply it mid-balance. The solver matches SciPy to 1e-4 (`test/`, `lqrsolver`).
+
+The **disturbance observer** compares the gyro with what the model predicts for the commanded
+acceleration. It works out the angle the robot actually balances at, and LQR regulates around that:
+- a payload or a shifted battery is absorbed;
+- an IMU zero error is absorbed;
+- a constant push is absorbed;
+- the robot holds its position instead of creeping.
+
+In the simulator, a payload shift that made the robot creep 3 m without the observer moves it 7 mm
+with it. The estimate is the telemetry field `balAngle`.
+
+The **Kalman filter** (`imu.ino`) estimates pitch and gyro bias together. It keeps learning the bias,
+which drifts as the chip warms up, so pitch doesn't creep and the pitch rate the controllers use is
+bias-free. The accelerometer is ignored while the robot accelerates hard, when its reading isn't
+gravity.
 
 Signs everywhere: pitch > 0 = leaning forward, motor command > 0 = drive forward, wheel speed > 0
 = moving forward. Fix the hardware to match with the `*Invert` / `imuAxis` settings, not in code.
@@ -60,7 +91,7 @@ Install from the Arduino Library Manager (versions the firmware was built with):
 
 * **MPU6050** by Electronic Cats, v1.4.5. This is the maintained continuation of Jeff Rowberg's
   i2cdevlib and includes `I2Cdev`. It replaces FreeIMU, which has not been maintained since about
-  2014. Balancing needs only the pitch angle and rate, which a complementary filter on the raw
+  2014. Balancing needs only the pitch angle and rate, which a Kalman filter on the raw
   gyro and accelerometer provides with less delay than a full AHRS. The magnetometer and
   barometer are not used.
 * **FastAccelStepper** by gin66, v2.0.0 (steppers). Generates step pulses from a hardware timer
@@ -111,13 +142,25 @@ with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 Keep the robot still while it boots: the gyro bias is measured then.
 
 If it falls the same way every time, re-check steps 2-4: a sign error makes it run away instantly.
-If it oscillates fast, lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
+If it oscillates fast: with LQR lower `lqrMaxAccel` (effort becomes more expensive, so the
+controller is gentler); with PIDs lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
 driving to stay up, redo step 3.
 
 Default gains
 -------------
 
-**Steppers.** The gains live in physical units in `gains.ino` and are converted using
+**Steppers, LQR (default).** The settings were chosen in the simulator over robots of 12-30 cm, IMU
+offsets of ±2° and up to 4× the expected sensor noise, then checked against gyro drift, payload
+shifts and robots of 7-45 cm:
+* `lqrMaxPosition` 0.1 m, `lqrMaxSpeed` 0.5 m/s, `lqrMaxAngle` 4.5°, `lqrMaxRate` 10°/s,
+  `lqrMaxAccel` 2.7 m/s²;
+* `dobBandwidth` 2 rad/s;
+* Kalman: `kalmanQAngle` 0.002, `kalmanQBias` 0.003, `kalmanR` 3.
+
+The gain only depends on the robot through L, and the autotuner measures L. Before autotuning, the
+defaults (for L = 0.2 m) balance robots from 7 cm to 45 cm in the simulator.
+
+**Steppers, PID.** The gains live in physical units in `gains.ino` and are converted using
 `wheelDiameter`, `stepsPerRev` and `stepperMaxSpeed`. Changing those settings recomputes them, so
 you can change microstepping or wheels without retuning. They depend on one property of the robot,
 its effective pendulum length L: how high the mass sits above the axle, which sets how fast it
@@ -159,7 +202,7 @@ three phases:
      acceleration;
    * the wheel acceleration is delayed by 5 ms to line up with the MPU-6050's internal filter;
    * every signal gets the same 3 Hz low-pass.
-3. **Verify (6 s).** It applies gains for the measured L and sets the measured offset as the new
+3. **Verify (6 s).** It applies gains for the measured L (LQR gain rescaled, or PID gains) and sets the measured offset as the new
    zero, then scores the wobble again.
 
 The result is **rejected and everything restored** if:
@@ -197,12 +240,18 @@ Commands
 | `motorLeftMinimumSpeed`, `motorRightMinimumSpeed` | PWM 0-254 |
 | `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
 | `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
+| `controller` | 1 = LQR + disturbance observer (steppers), 0 = PID. Change with the motors off |
+| `lqrMaxPosition` (m), `lqrMaxSpeed` (m/s), `lqrMaxAngle` (°), `lqrMaxRate` (°/s), `lqrMaxAccel` (m/s²) | LQR weights for a 0.2 m robot; applied when the motors are off |
+| `lqrAccelLimit` (m/s²), `dobBandwidth` (rad/s for a 0.2 m robot, 0 = observer off) | plain number |
+| `kalmanQAngle`, `kalmanQBias`, `kalmanR` | Kalman filter noise settings, plain numbers |
 | `Motors`, `AUTOTUNE`, `SerialDebug` | 0/1 |
 | `Throttle`, `Steer` | -100..100. Not echoed. A non-zero value must be repeated at least every second (the web server sends them at 10 Hz); otherwise both drop back to 0, so a lost connection can't leave the robot driving |
 | `CalibrateZero 1`, `MotorTest <-100..100>`, `pendulumLength <mm>` (steppers: gains for that length), `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
 
 Lines from the robot start with a tag: `T`/`TH` telemetry, `PID`/`PIDH`, `SYS`/`SYSH`, `EV` events,
-`AT` autotune progress/result, `TEST` motor test, `***` config dump, `E` errors.
+`AT` autotune progress/result, `LQR` gain (`LQR,k_pos,k_speed,k_pitch,k_rate,L`, also with
+`READ LQRParamTX`), `TEST` motor test, `***` config dump, `E` errors. Telemetry includes `balAngle`,
+the disturbance observer's balance angle.
 
 Simulator
 ---------
