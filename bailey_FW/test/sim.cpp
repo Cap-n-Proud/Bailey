@@ -36,6 +36,7 @@ SimWire Wire;
 #include "../imu.ino"
 #include "../lqr.ino"
 #include "../motors.ino"
+#include "../mpc.ino"
 #include "../settings.ino"
 
 // ---------------- Plant model ----------------
@@ -726,6 +727,80 @@ static bool scenarioLqrSolver() {
   return ok;
 }
 
+// LQR vs MPC near the limits (ESP32-S3 build): the hardest push each survives,
+// and full throttle with Maxthrottle 95 (the firmware caps the target at 90 %
+// of top speed) with full reversals.
+static bool scenarioLimits() {
+#if BOARD_ESP32 && MOTOR_TYPE == MOTOR_STEPPER
+  if (getenv("LIMITS_TRACE")) {         // one fast drive with one controller, traced
+    plant = Plant();
+    boot();
+    cfg.controller = atoi(getenv("LIMITS_TRACE"));
+    cfg.Maxthrottle = getenv("MAXTHROTTLE") ? atof(getenv("MAXTHROTTLE")) : 95;
+    startBalancing(0);
+    run(3);
+    send("SCMD Throttle 100");
+    for (int k = 0; k < 800 && state == STATE_BALANCING; k++) {
+      run(0.01);
+      if (k % 10 == 0)
+        printf("t=%.1f set%%=%.1f v=%.3f vcmd=%.3f th=%.2f c0=%.3f c10=%.3f step=%.2e\n", simMicros / 1e6, speedSetpoint,
+               (plant.vl + plant.vr) / 2, speedCmd, plant.theta * 180 / M_PI, mpcC[0], mpcC[10], mpcStepSize);
+    }
+    return true;
+  }
+  const char *names[] = { "LQR", "MPC" };
+  double hardest[2] = { 0, 0 };
+  int driveFalls[2] = { 0, 0 };
+  double driveTilt[2] = { 0, 0 };
+  uint16_t iterations = 0, worstIterations = 0;
+  for (int c = 0; c < 2; c++) {
+    for (double push = 0.5; push <= 6.01; push += 0.25) {
+      plant = Plant();
+      received.clear();
+      boot();
+      cfg.controller = c ? CONTROLLER_MPC : CONTROLLER_LQR;
+      startBalancing(0);
+      run(3);
+      stats.reset();
+      plant.omega += push;
+      run(4);
+      if (stats.falls || state != STATE_BALANCING) break;
+      hardest[c] = push;
+    }
+    plant = Plant();
+    received.clear();
+    boot();
+    cfg.controller = c ? CONTROLLER_MPC : CONTROLLER_LQR;
+    cfg.Maxthrottle = getenv("MAXTHROTTLE") ? atof(getenv("MAXTHROTTLE")) : 95;
+    startBalancing(0);
+    run(3);
+    stats.reset();
+    for (int i = 0; i < 3; i++) {
+      send("SCMD Throttle 100");
+      for (int k = 0; k < 600; k++) {
+        run(0.01);
+        if (c) { uint16_t us; mpcStats(iterations, us); worstIterations = std::max(worstIterations, iterations); }
+      }
+      send("SCMD Throttle -100");
+      run(6);
+    }
+    send("SCMD Throttle 0");
+    run(5);
+    driveFalls[c] = stats.falls + (state != STATE_BALANCING);
+    driveTilt[c] = stats.maxAbsDeg;
+    printf("  %s: hardest push survived %.2f rad/s; fast driving: %d falls, max tilt %.1f deg, top speed %.2f m/s\n",
+           names[c], hardest[c], driveFalls[c], driveTilt[c], stats.maxSpeed);
+  }
+  printf("  MPC iterations per step: worst %u of 40\n", worstIterations);
+  bool ok = check(hardest[1] >= hardest[0], "MPC survives pushes at least as hard as LQR");
+  ok &= check(driveFalls[0] == 0 && driveFalls[1] == 0,
+              "LQR and MPC: no falls at full throttle (Maxthrottle 95, capped at 90 % of top speed) with full reversals");
+  return ok;
+#else
+  return check(true, "ESP32-S3 stepper build only");
+#endif
+}
+
 static bool scenarioCommands() {
   boot();
   bool ok = true;
@@ -827,6 +902,7 @@ int main(int argc, char **argv) {
     { "autotune", scenarioAutotune }, { "commands", scenarioCommands },
     { "scaling", scenarioScaling },   { "disturbance", scenarioDisturbance },
     { "kalman", scenarioKalman },     { "lqrsolver", scenarioLqrSolver },
+    { "limits", scenarioLimits },
     { "eeprom", scenarioEeprom },     { "score", scenarioScore },
     { "demo", scenarioDemo },         { "lqrgain", scenarioLqrGain },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
   };

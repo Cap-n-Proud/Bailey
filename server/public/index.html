@@ -78,6 +78,7 @@
         <span class="label">Controller</span>
         <div class="segmented" role="group" aria-label="Balance controller">
           <button id="ctrlLqr" data-controller="1" title="LQR + disturbance observer (steppers)">LQR</button>
+          <button id="ctrlMpc" data-controller="2" title="Model predictive control: LQR that plans 1.2 s ahead around the motors' limits (ESP32-S3 only)">MPC</button>
           <button id="ctrlPid" data-controller="0" title="Cascaded PIDs">PID</button>
         </div>
         <span class="meta" id="lqrInfo"></span>

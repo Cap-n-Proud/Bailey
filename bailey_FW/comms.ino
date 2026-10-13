@@ -151,7 +151,7 @@ static const IntParam intParams[] = {
   { P_encoderRightInvert, &cfg.encoderRightInvert, 1, 0, 1 },
   { P_debugSampleRate, &cfg.debugSampleRate, 2, 50, 10000 },
   { P_telemetryPeriod, &cfg.telemetryPeriod, 2, 50, 10000 },
-  { P_controller, &cfg.controller, 1, 0, 1 },
+  { P_controller, &cfg.controller, 1, 0, 2 },
 };
 
 #define COUNT(a) (sizeof(a) / sizeof(a[0]))
@@ -206,8 +206,12 @@ static void setCommand(const char *arg, const char *value) {
       Serial.println(F("E, switch controller with the motors off"));
       return;
     }
-    if (MOTOR_TYPE != MOTOR_STEPPER && atoi(value) == CONTROLLER_LQR) {
-      Serial.println(F("E, LQR needs stepper motors"));
+    if (MOTOR_TYPE != MOTOR_STEPPER && atoi(value) != CONTROLLER_PID) {
+      Serial.println(F("E, LQR and MPC need stepper motors"));
+      return;
+    }
+    if (!BOARD_ESP32 && atoi(value) == CONTROLLER_MPC) {
+      Serial.println(F("E, MPC needs the ESP32-S3 (too slow on the Mega)"));
       return;
     }
     setParam(arg, value);

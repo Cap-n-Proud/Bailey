@@ -34,7 +34,8 @@ Structure
 | `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
 | `bailey_FW.ino` | `setup()`, `loop()`, state machine and the balance loop (500 Hz ESP32-S3, 200 Hz Mega) |
 | `imu.ino` | MPU-6050 read + Kalman filter (pitch and gyro bias), any mounting orientation, zero offset |
-| `lqr.ino` | LQR controller (Riccati equation solved on the Arduino) and disturbance observer |
+| `lqr.ino` | LQR controller (Riccati equation solved on the board) and disturbance observer |
+| `mpc.ino` | Model predictive control (ESP32-S3 only) |
 | `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
 | `comms.ino` | Serial commands, telemetry, PID/SYS lines |
 | `autotune.ino` | Autotuner: measures pendulum length and IMU offset while balancing |
@@ -42,8 +43,11 @@ Structure
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
 | `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
 
-Control loop (500 Hz on the ESP32-S3, 200 Hz on the Mega). There are two controllers, selected with `SCMD controller <1|0>`. Steppers
-use **LQR** by default; DC motors always use the **PIDs**.
+Control loop (500 Hz on the ESP32-S3, 200 Hz on the Mega). There are three controllers, selected
+with `SCMD controller <n>` or in the web UI:
+* **1 = LQR**, the default on steppers;
+* **2 = MPC**, ESP32-S3 only;
+* **0 = PID**, always used with DC motors.
 
 ```
 LQR (steppers):
@@ -73,6 +77,29 @@ acceleration. It works out the angle the robot actually balances at, and LQR reg
 
 In the simulator, a payload shift that made the robot creep 3 m without the observer moves it 7 mm
 with it. The estimate is the telemetry field `balAngle`.
+
+**MPC** (`mpc.ino`, ESP32-S3) uses the same model, state and observer as LQR. Every control step it
+plans 1.2 s ahead (40 steps of 30 ms) around the motors' hard limits: acceleration up to
+`lqrAccelLimit` and wheel speed up to full speed. It applies the first step of the plan.
+
+It is *pre-stabilised*: the plan is "LQR plus corrections", and with the LQR's Riccati solution as
+the cost of where the plan ends, the cost is exact. So with no limit in sight the corrections are 0
+and it is exactly LQR; it only acts differently near a limit. Planning around the LQR-stabilised
+robot also keeps the long-horizon numbers well conditioned in 32-bit floats; planning the raw
+unstable robot 1.5 s ahead does not. The limits are stiff penalties, minimised with FISTA (at most
+30 iterations of one forward and one adjoint pass, about 0.5-1 ms per step on the ESP32-S3).
+
+**Honest result:** in the simulator it is never worse than LQR, but it is also no better. Both
+survive the same hardest push (limited by the motors' acceleration), and both drive at full
+throttle with reversals. What made fast driving safe were two reference changes that apply to
+LQR and MPC alike:
+* while driving, track speed rather than a position the robot has fallen behind;
+* cap the speed target at `MAX_DRIVE_SPEED` (90 %) of full speed, so there is room left to tilt
+  back and brake.
+
+MPC is there to experiment with: for example with harder limits (lower `lqrAccelLimit` or
+`stepperMaxSpeed`), or as a base for obstacle or slope constraints. Watch **Loop time** in the UI:
+it must stay under 2000 µs.
 
 The **Kalman filter** (`imu.ino`) estimates pitch and gyro bias together. It keeps learning the bias,
 which drifts as the chip warms up, so pitch doesn't creep and the pitch rate the controllers use is
@@ -285,7 +312,7 @@ Commands
 | `motorLeftMinimumSpeed`, `motorRightMinimumSpeed` | PWM 0-254 |
 | `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
 | `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
-| `controller` | 1 = LQR + disturbance observer (steppers), 0 = PID. Change with the motors off |
+| `controller` | 1 = LQR + disturbance observer (steppers), 2 = MPC (ESP32-S3), 0 = PID. Change with the motors off |
 | `lqrMaxPosition` (m), `lqrMaxSpeed` (m/s), `lqrMaxAngle` (°), `lqrMaxRate` (°/s), `lqrMaxAccel` (m/s²) | LQR weights for a 0.2 m robot; applied when the motors are off |
 | `lqrAccelLimit` (m/s²), `dobBandwidth` (rad/s for a 0.2 m robot, 0 = observer off) | plain number |
 | `kalmanQAngle`, `kalmanQBias`, `kalmanR` | Kalman filter noise settings, plain numbers |

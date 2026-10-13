@@ -129,9 +129,11 @@ void loop() {
   motorTestReport();
 }
 
-// LQR needs the steppers' exact acceleration; DC motors always use the PIDs.
+// LQR and MPC (which shares the LQR's model, state and observer) need the
+// steppers' exact acceleration; DC motors always use the PIDs. MPC needs the ESP32-S3.
 static bool wantLqr() {
-  return MOTOR_TYPE == MOTOR_STEPPER && cfg.controller == CONTROLLER_LQR;
+  return MOTOR_TYPE == MOTOR_STEPPER &&
+         (cfg.controller == CONTROLLER_LQR || (BOARD_ESP32 && cfg.controller == CONTROLLER_MPC));
 }
 
 // ...and a solved gain: if the Riccati solver ever failed, balance with the PIDs.
@@ -230,7 +232,9 @@ void controlStep(float dt) {
 
   // Speed setpoint from the throttle, ramped: a sudden jump makes the robot
   // overshoot into motor saturation.
-  float target = throttleCmd / 100.0f * cfg.Maxthrottle;
+  // Never ask for more than MAX_DRIVE_SPEED of full speed: balancing at speed
+  // needs headroom above the cruising speed to tilt back and brake.
+  float target = constrain(throttleCmd / 100.0f * cfg.Maxthrottle, -MAX_DRIVE_SPEED, MAX_DRIVE_SPEED);
   float step = cfg.speedRamp * dt;
   speedSetpoint += constrain(target - speedSetpoint, -step, step);
 

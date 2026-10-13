@@ -25,7 +25,7 @@ The web UI
 * **Video:** a camera stream with pitch and heading overlaid. The camera only runs while someone
   is watching.
 * **Tuning:**
-  * **Controller:** LQR (default on steppers) or PID, with the LQR gain and pendulum length shown.
+  * **Controller:** LQR (default on steppers), MPC (ESP32-S3) or PID, with the LQR gain and pendulum length shown.
   * **Autotune** (about 30 s, while balancing) measures the robot and sets its gains and zero.
   * **Calibrate zero**, **Motor test**, **Save to EEPROM** and **Load defaults**.
   * **Pendulum length**, if you've measured it.

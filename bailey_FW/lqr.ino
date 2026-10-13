@@ -30,6 +30,10 @@
 // steppers. Driving moves x_ref (speed and position) along the ramped throttle.
 
 #define MAX_POSITION_ERROR 0.3f   // m: if pushed further, don't drive all the way back
+// While driving, track the speed, not a position the robot has fallen behind:
+// catching up a lag built during the throttle ramp would mean overshooting the
+// speed, and near top speed there is no room left to tilt back and brake.
+#define MAX_POSITION_ERROR_DRIVING 0.05f
 
 #define LQR_REF_LENGTH 0.20f      // m, length the weights are given for
 
@@ -123,7 +127,7 @@ static void lqrModel(float L, float dt, Mat4 Ad, float Bd[4]) {
 // doubling algorithm (converges in ~20 iterations, unlike plain Riccati
 // iteration which needs thousands at a 5 ms step), then K = (R + B'PB)^-1 B'PA.
 // Returns false if it didn't converge.
-bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4]) {
+bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P) {
   Mat4 Ad, Gk, Hk, ident = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } };
   float Bd[4];
   lqrModel(L, dt, Ad, Bd);
@@ -164,7 +168,8 @@ bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4]) {
     memcpy(Gk, Gn, sizeof(Mat4));
     memcpy(Hk, Hn, sizeof(Mat4));
     if (change <= 1e-6f * size) {
-      // Hk is P. K = (r + B'PB)^-1 B'P A
+      // Hk is P (also the MPC's terminal cost). K = (r + B'PB)^-1 B'P A
+      if (P) memcpy(*P, Hk, sizeof(Mat4));
       float PB[4], bpb = 0;
       for (uint8_t i = 0; i < 4; i++) {
         PB[i] = 0;
@@ -279,14 +284,22 @@ float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleErro
   // --- State relative to the reference ---
   position += groundSpeed * dt;
   refPosition += referenceSpeed * dt;
-  float posErr = constrain(position - refPosition, -MAX_POSITION_ERROR, MAX_POSITION_ERROR);
+  float maxErr = referenceSpeed != 0 ? MAX_POSITION_ERROR_DRIVING : MAX_POSITION_ERROR;
+  float posErr = constrain(position - refPosition, -maxErr, maxErr);
   refPosition = position - posErr;
   float thetaRef = thetaBalance + extraPitch / 57.29578f;
   float x[4] = { posErr, groundSpeed - referenceSpeed, theta - thetaRef, rate };
   angleError = x[2] * 57.29578f;
 
   float a = 0;
-  for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];
+#if BOARD_ESP32
+  if (cfg.controller == CONTROLLER_MPC) {
+    a = mpcAccel(x, groundSpeed, referenceSpeed);
+  } else
+#endif
+  {
+    for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];
+  }
   a = constrain(a, -cfg.lqrAccelLimit, cfg.lqrAccelLimit);
 
   // Integrate into the speed for the steppers (they follow it exactly).

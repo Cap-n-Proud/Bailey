@@ -180,9 +180,10 @@ typedef float Mat4[4][4];        // 4x4 matrix, row major (in the header: the Ar
                                  // generated prototypes need it before the .ino files)
 #define CONTROLLER_PID 0
 #define CONTROLLER_LQR 1
+#define CONTROLLER_MPC 2         // ESP32-S3 only (mpc.ino)
 extern bool lqrWeightsChanged;
 extern float balanceAngle;
-bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4]);
+bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P = NULL);
 bool lqrSolveReference();
 void lqrMaintain(bool balancing);
 bool lqrReady();
@@ -190,6 +191,10 @@ void LQRParamTX();
 void lqrReset();
 void lqrZeroShifted(float delta);
 float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleError);
+
+// mpc.ino (ESP32-S3)
+float mpcAccel(const float x[4], float speed, float referenceSpeed);
+void mpcStats(uint16_t &iterations, uint16_t &microseconds);
 
 // gains.ino
 float fullSpeedMps();

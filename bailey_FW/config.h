@@ -89,5 +89,6 @@
 #define UPRIGHT_ANGLE       5.0f     // deg: robot must be this close to upright to start balancing
 #define UPRIGHT_HOLD_MS     300UL    // ...for this long
 #define DRIVE_TIMEOUT_MS    1000UL   // throttle/steer fall back to 0 unless refreshed this often
+#define MAX_DRIVE_SPEED     90.0f    // % of full speed the throttle may ask for (headroom to brake)
 
 #endif
