@@ -329,7 +329,7 @@ void remoteInit() {
   Serial.println(F("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal,balAngle"));
   Serial.println(F("PIDH,speedPIDKp,speedPIDKi,speedPIDKd,anglePIDConKp,anglePIDConKi,anglePIDConKd,"
                    "anglePIDAggKp,anglePIDAggKi,anglePIDAggKd,TriggerAngleAggressive,calibratedZeroAngle,OPT,controller"));
-  Serial.println(F("SYSH,FirmwareVersion"));
+  Serial.println(F("SYSH,FirmwareVersion,Board,ControlPeriodUs"));
 }
 
 void telemetryTX() {
@@ -407,7 +407,9 @@ void PIDParamTX() {
 
 void SYSParamTX() {
   Serial.print(F("SYS,"));
-  Serial.println(F(FIRMWARE_VERSION));
+  Serial.print(F(FIRMWARE_VERSION));
+  Serial.print(F("," BOARD_NAME ","));
+  Serial.println(CONTROL_PERIOD_US);
 }
 
 void printConfig() {

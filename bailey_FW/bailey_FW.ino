@@ -61,6 +61,10 @@ void setEvent(const char *event) {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+#if BOARD_ESP32
+  // The ESP32 emulates EEPROM in flash: reserve it before the first read.
+  EEPROM.begin(EEPROM_BYTES);
+#endif
 
   if (!loadSettings()) {
     loadDefaultSettings();
@@ -77,10 +81,13 @@ void setup() {
   anglePID.reset();
   speedPID.reset();
 
+#if BOARD_ESP32
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+#else
   Wire.begin();
+#endif
   imuSetup();   // keep the robot still: the gyro is calibrated here
 
-  randomSeed(analogRead(0));
   lastControlUs = micros();
   remoteInit();
   setEvent("Ready");

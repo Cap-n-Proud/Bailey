@@ -73,6 +73,10 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   assert.equal(ui.latest.gains.gains.anglePIDConKp, 12);
   assert.equal(ui.latest.gains.gains.controller, 1);              // steppers balance with LQR
   assert.equal(ui.latest.lqr.length, 0.2);
+  await waitFor(() => ui.latest.snapshot && (ui.latest.firmware || ui.latest.snapshot.robot.firmware), 3000, 'firmware info');
+  const fw = ui.latest.firmware || ui.latest.snapshot.robot.firmware;
+  assert.equal(fw.Board, 'Mega2560');            // the simulator builds the Mega configuration
+  assert.equal(fw.ControlPeriodUs, '5000');
   assert.ok(ui.latest.lqr.gain[2] < -50, 'LQR pitch gain');
 
   assert.equal((await ask(ui, 'command', { name: 'Motors', value: 1 })).ok, true);

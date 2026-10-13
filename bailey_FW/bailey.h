@@ -13,6 +13,7 @@
 #define SETTINGS_MAGIC   0xBA17
 #define SETTINGS_VERSION 5
 #define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
+#define EEPROM_BYTES     1024    // ESP32: size of the flash area emulating EEPROM
 #define G_ACC 9.81f              // m/s^2
 
 // Everything that can be changed at runtime with "SCMD <name> <value>".

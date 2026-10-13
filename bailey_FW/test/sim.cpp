@@ -207,7 +207,7 @@ static void run(double seconds) {
       fflush(csv);
     }
     static uint64_t lastTrace = 0;
-    if (getenv("SIM_TRACE") && simMicros - lastTrace >= (getenv("SIM_TRACE_US") ? atoi(getenv("SIM_TRACE_US")) : 50000)) {
+    if (getenv("SIM_TRACE") && simMicros - lastTrace >= (uint64_t)(getenv("SIM_TRACE_US") ? atoi(getenv("SIM_TRACE_US")) : 50000)) {
       lastTrace = simMicros;
       printf("t=%.2f st=%d th=%.2f meas=%.2f set=%.2f out=%.1f v=%.3f ws=%.1f\n", simMicros / 1e6, state,
              plant.theta * 180 / M_PI, pitch, angleSetpoint, angleOutput, (plant.vl + plant.vr) / 2, wheelSpeed);
@@ -399,6 +399,7 @@ static bool scenarioFall() {
   return ok;
 }
 
+#if MOTOR_TYPE == MOTOR_STEPPER
 struct AtResult {
   bool seen = false, accepted = false;
   double L = 0, L1 = 0, L2 = 0, offset = 0, r2 = 0, before = 0, after = 0;
@@ -440,6 +441,8 @@ static bool autotuneCase(double length, double offsetDeg) {
   ok &= check(stats.falls == 0 && state == STATE_BALANCING, "balanced throughout");
   return ok;
 }
+
+#endif
 
 static bool scenarioAutotune() {
 #if MOTOR_TYPE == MOTOR_STEPPER
@@ -784,6 +787,10 @@ static bool scenarioCommands() {
 static bool scenarioEeprom() {
   boot();
   bool ok = check(cfg.magic == SETTINGS_MAGIC, "blank EEPROM -> defaults");
+#if BOARD_ESP32
+  ok &= check(EEPROM.begun > 0 && EEPROM.commits > 0, "ESP32: flash EEPROM begun and committed");
+  ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "ESP32: I2C on the configured pins");
+#endif
   cfg.anglePIDConKp = 12.34f;
   saveSettings();
   cfg.anglePIDConKp = 0;

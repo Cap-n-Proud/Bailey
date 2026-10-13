@@ -1,8 +1,10 @@
 Bailey firmware
 ===============
 
-Firmware for the Bailey two-wheeled self-balancing robot: an Arduino Mega 2560 does the balancing
-and drives the motors (steppers by default), using the MPU-6050 on the IMU board. A Raspberry Pi
+Firmware for the Bailey two-wheeled self-balancing robot: a microcontroller does the balancing and
+drives the motors (steppers by default), using the MPU-6050 on the IMU board. It runs on the
+**ESP32-S3** (recommended, e.g. the Waveshare ESP32-S3-Pico) or the original **Arduino Mega 2560**;
+the board is detected when compiling. A Raspberry Pi
 runs the Node.js server in `server/` (web UI, video) and talks to the Arduino over USB serial at 115200 baud.
 
 Version 2.0 is a rewrite. Why the previous firmware never balanced:
@@ -30,7 +32,7 @@ Structure
 | --- | --- |
 | `config.h` | Build-time options: motor type (`MOTOR_STEPPER` default, or `MOTOR_DC`), pins, IMU address, loop rate |
 | `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
-| `bailey_FW.ino` | `setup()`, `loop()`, state machine and the 200 Hz balance loop |
+| `bailey_FW.ino` | `setup()`, `loop()`, state machine and the balance loop (500 Hz ESP32-S3, 200 Hz Mega) |
 | `imu.ino` | MPU-6050 read + Kalman filter (pitch and gyro bias), any mounting orientation, zero offset |
 | `lqr.ino` | LQR controller (Riccati equation solved on the Arduino) and disturbance observer |
 | `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
@@ -40,7 +42,7 @@ Structure
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
 | `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
 
-Control loop (200 Hz). There are two controllers, selected with `SCMD controller <1|0>`. Steppers
+Control loop (500 Hz on the ESP32-S3, 200 Hz on the Mega). There are two controllers, selected with `SCMD controller <1|0>`. Steppers
 use **LQR** by default; DC motors always use the **PIDs**.
 
 ```
@@ -84,6 +86,48 @@ State machine: `OFF` (Motors 0) -> `WAIT` (Motors 1, waiting until the robot is 
 of upright for 0.3 s) -> `BAL` -> `FALL` (tilt > `fallAngle`, motors cut) -> `WAIT` again once
 picked up. Telemetry field `bal` is the state: 0 OFF, 1 WAIT, 2 BAL, 3 FALL.
 
+Boards
+------
+
+| | ESP32-S3 (Waveshare ESP32-S3-Pico) | Arduino Mega 2560 |
+| --- | --- | --- |
+| CPU | 2 × 240 MHz with hardware floating point | 16 MHz, floating point in software |
+| Balance loop | 500 Hz | 200 Hz |
+| Logic level | 3.3 V | 5 V |
+| Settings storage | flash, emulating EEPROM | EEPROM |
+| Motors | steppers | steppers or DC motors with encoders |
+
+Both talk to the Pi over USB as `/dev/ttyACM0`. On the ESP32-S3 that's its own USB port, which
+needs **USB CDC On Boot = Enabled** when compiling; `install/flash-firmware.sh` sets it. The
+ESP32-S3 needs no programmer: it uploads over the same USB cable. If an upload fails (the first
+time, or after a crash), hold **BOOT**, press **RESET** (or replug the cable), release BOOT and
+upload again.
+
+**ESP32-S3-Pico wiring** (GPIO numbers, set in `config.h`):
+
+| Signal | GPIO | Connect to |
+| --- | --- | --- |
+| Left STEP / DIR | 11 / 12 | left stepper driver STEP / DIR |
+| Right STEP / DIR | 13 / 14 | right stepper driver STEP / DIR |
+| Stepper ENABLE | 17 | EN of both drivers (active low) |
+| I2C SDA / SCL | 15 / 16 | MPU-6050 SDA / SCL |
+| 3V3, GND | | MPU-6050 VCC/GND, stepper drivers' logic VDD/GND |
+
+Wiring notes:
+* All signals are 3.3 V. A4988, DRV8825 and TMC2209 driver inputs and the MPU-6050 accept that
+  directly. Never connect a 5 V output to the board's pins.
+* The motor power (VMOT) stays on the drivers' own supply, with the grounds connected together.
+* These GPIOs are safe on any ESP32-S3 with quad PSRAM. The pins avoided are:
+  * 0, 3, 45 and 46 (boot mode);
+  * 19 and 20 (USB);
+  * 26-32 (flash/PSRAM);
+  * 21 (the Pico's RGB LED).
+* Check the GPIO numbers against the pinout card that comes with the board. If you'd rather use
+  other pins, any free GPIO works for every signal; change them in `config.h`.
+
+**Mega wiring:** STEP 6 (left) and 7 (right), DIR 9 and 10, shared active-low ENABLE on 12,
+MPU-6050 on SDA/SCL (20/21).
+
 Libraries
 ---------
 
@@ -100,16 +144,17 @@ Install from the Arduino Library Manager (versions the firmware was built with):
   it misbehaves, v1.4.0 has the same API for everything used here.
 * **Encoder** by Paul Stoffregen, v1.4.4 (DC motors only; the current git master does not compile
   for AVR).
-* Wire, EEPROM (bundled with the Arduino AVR core).
+* Wire, EEPROM (bundled with the board cores).
 
-Wiring for steppers is in `config.h`: STEP 6 (left) and 7 (right), DIR 9 and 10, shared active-low
-ENABLE on 12, MPU-6050 on SDA/SCL (20/21 on the Mega). For DC motors, set `MOTOR_TYPE` to
-`MOTOR_DC`.
+Board cores: **esp32** by Espressif (Arduino-ESP32 3.x; board "ESP32S3 Dev Module", USB CDC On Boot
+Enabled, 16 MB flash, QSPI PSRAM), or **Arduino AVR Boards** for the Mega. `install/flash-firmware.sh`
+installs everything and uploads from the Pi: `./install/flash-firmware.sh esp32s3` or `... mega`.
+For DC motors (Mega only), set `MOTOR_TYPE` to `MOTOR_DC`.
 
 Bring-up (do it in this order)
 ------------------------------
 
-Send the commands from the web UI console or a serial monitor at 115200 baud. Settings changed
+Send the commands from the web UI console or a serial monitor (115200 baud on the Mega). Settings changed
 with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 
 1. **Turn on debug output:** `SCMD SerialDebug 1` prints a readable status line twice a second.

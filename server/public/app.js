@@ -113,7 +113,10 @@ function onTelemetry(t) {
   $('pitch').textContent = `${fmt(t.pitch, 2)}°`;
   $('speed').textContent = `${fmt(speed)} %`;
   $('loopTime').textContent = `${t.LoopT} µs`;
-  $('loopTime').style.color = t.LoopT > 5000 ? css('--bad') : '';
+  // Budget: the firmware's control period (5000 µs on the Mega, 2000 µs on the ESP32-S3).
+  const budget = Number(robot.firmware?.ControlPeriodUs) || 5000;
+  $('loopTime').style.color = t.LoopT > budget ? css('--bad') : '';
+  $('loopTime').title = `Worst control loop time since the last telemetry; must stay under ${budget} µs`;
   $('wobble').textContent = fmt(t.dISTE, 3);
   $('balAngle').textContent = typeof t.balAngle === 'number' ? `${fmt(t.balAngle, 2)}°` : '–';
   $('hudPitch').textContent = fmt(t.pitch, 1);
@@ -128,6 +131,12 @@ function animate() {
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
+// ---------- firmware ----------
+function renderFirmware() {
+  const f = robot.firmware;
+  $('firmware').textContent = `firmware ${f.FirmwareVersion}${f.Board ? ` · ${f.Board}` : ''}`;
+}
 
 // ---------- controller ----------
 function renderController() {
@@ -385,13 +394,13 @@ socket.on('snapshot', (s) => {
   renderCamera(s.camera);
   renderSystem(s.system);
   renderLogging(s.logging);
-  if (robot.firmware) $('firmware').textContent = `firmware ${robot.firmware.FirmwareVersion}`;
+  if (robot.firmware) renderFirmware();
   if (robot.telemetry) onTelemetry(robot.telemetry);
 });
 socket.on('telemetry', onTelemetry);
 socket.on('gains', (g) => { robot.gains = g.gains; renderGains(); });
 socket.on('lqr', (l) => { robot.lqr = l; renderController(); });
-socket.on('firmware', (f) => { robot.firmware = f; $('firmware').textContent = `firmware ${f.FirmwareVersion}`; });
+socket.on('firmware', (f) => { robot.firmware = f; renderFirmware(); });
 socket.on('link', (l) => { robot.link = l; renderLink(); });
 socket.on('autotune', (a) => {
   if (a.phase !== robot.autotune.phase) phaseStarted = Date.now();

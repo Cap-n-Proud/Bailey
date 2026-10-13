@@ -19,7 +19,8 @@ The web UI
 
 * **Drive:** **Motors on** / **Stop**, and a joystick (mouse, touch or arrow keys; Space = stop).
   The robot starts balancing once it's held upright.
-* **Live:** pitch and wheel speed charts (20 s), the control loop time (must stay below 5000 µs),
+* **Live:** pitch and wheel speed charts (20 s), the control loop time (must stay below the control period: 2000 µs on the ESP32-S3, 5000 µs on
+  the Mega),
   the wobble, and the balance angle found by the disturbance observer.
 * **Video:** a camera stream with pitch and heading overlaid. The camera only runs while someone
   is watching.

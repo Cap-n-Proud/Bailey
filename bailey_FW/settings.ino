@@ -85,6 +85,8 @@ void loadDefaultSettings() {
   cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud
 }
 
+static_assert(SETTINGS_ADDRESS + sizeof(Settings) <= EEPROM_BYTES, "Settings don't fit in EEPROM_BYTES");
+
 static uint16_t settingsCrc(const Settings &s) {
   // Fletcher-16 over everything except the crc field itself.
   const uint8_t *p = (const uint8_t *)&s;
@@ -112,9 +114,15 @@ void saveSettings() {
   cfg.version = SETTINGS_VERSION;
   cfg.crc = settingsCrc(cfg);
   EEPROM.put(SETTINGS_ADDRESS, cfg);   // put() only writes bytes that changed
+#if BOARD_ESP32
+  EEPROM.commit();                     // the ESP32 writes its flash copy only on commit
+#endif
 }
 
 void eraseSettings() {
   for (unsigned int i = 0; i < sizeof(Settings); i++)
     EEPROM.write(SETTINGS_ADDRESS + i, 0xFF);
+#if BOARD_ESP32
+  EEPROM.commit();
+#endif
 }
