@@ -29,6 +29,34 @@ sudo usermod -aG dialout,video,input "$USER_NAME"
 echo "== Server dependencies"
 (cd "$REPO/server" && npm ci --omit=dev)
 
+echo "== Video: MediaMTX (camera over WebRTC)"
+# Pinned release, checked against the release's published SHA-256 sums.
+MTX_VERSION=v1.21.0
+case "$(uname -m)" in
+  aarch64) MTX_ARCH=linux_arm64 ;;
+  armv7l)  MTX_ARCH=linux_armv7 ;;
+  armv6l)  MTX_ARCH=linux_armv6 ;;
+  x86_64)  MTX_ARCH=linux_amd64 ;;
+  *) MTX_ARCH="" ;;
+esac
+if [ -z "$MTX_ARCH" ]; then
+  echo "no MediaMTX build for $(uname -m): set camera.mode to \"mjpeg\" in server/config.local.json"
+elif ! /usr/local/bin/mediamtx --version 2>/dev/null | grep -q "$MTX_VERSION"; then
+  MTX_TMP="$(mktemp -d)"
+  MTX_FILE="mediamtx_${MTX_VERSION}_${MTX_ARCH}.tar.gz"
+  MTX_URL="https://github.com/bluenviron/mediamtx/releases/download/$MTX_VERSION"
+  curl -fsSL -o "$MTX_TMP/$MTX_FILE" "$MTX_URL/$MTX_FILE"
+  curl -fsSL -o "$MTX_TMP/checksums.sha256" "$MTX_URL/checksums.sha256"
+  (cd "$MTX_TMP" && grep "$MTX_FILE" checksums.sha256 | sha256sum --check --quiet)
+  tar -xzf "$MTX_TMP/$MTX_FILE" -C "$MTX_TMP" mediamtx
+  sudo install -m 0755 "$MTX_TMP/mediamtx" /usr/local/bin/mediamtx
+  rm -rf "$MTX_TMP"
+fi
+if [ -n "$MTX_ARCH" ]; then
+  sudo install -D -m 0644 "$REPO/install/mediamtx.yml" /etc/mediamtx/bailey.yml
+  sed -e "s|@USER@|$USER_NAME|g" "$REPO/install/mediamtx.service" | sudo tee /etc/systemd/system/mediamtx.service >/dev/null
+fi
+
 echo "== Shutdown/reboot from the web UI (these two commands only, no password)"
 SUDOERS=/etc/sudoers.d/bailey
 TMP="$(mktemp)"
@@ -51,6 +79,10 @@ fi
 sed -e "s|@USER@|$USER_NAME|g" -e "s|@REPO@|$REPO|g" "$REPO/install/bailey.service" \
   | sudo tee /etc/systemd/system/bailey.service >/dev/null
 sudo systemctl daemon-reload
+if [ -n "$MTX_ARCH" ]; then
+  sudo systemctl enable mediamtx
+  sudo systemctl restart mediamtx
+fi
 sudo systemctl enable bailey
 sudo systemctl restart bailey
 

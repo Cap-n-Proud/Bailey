@@ -152,7 +152,7 @@ test('gains, console, recording and HTTP endpoints', async (t) => {
 
   const status = await (await fetch(`${url}/api/status`)).json();
   assert.equal(status.robot.link.connected, true);
-  assert.equal((await fetch(`${url}/stream.mjpg`)).status, 503);   // camera disabled
+  assert.equal((await fetch(`${url}/stream.mjpg`)).status, 404);   // video is WebRTC (default camera.mode)
   assert.match(await (await fetch(`${url}/`)).text(), /<title>Bailey<\/title>/);
   ui.disconnect();
 });

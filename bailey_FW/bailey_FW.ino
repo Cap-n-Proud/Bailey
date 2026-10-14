@@ -12,7 +12,9 @@
 // forward. Use the imu* and motor*Invert settings to make the hardware match.
 
 #include <Wire.h>
-#include <EEPROM.h>
+#include <Preferences.h>     // settings in the ESP32's NVS flash (settings.ino)
+#include <esp_task_wdt.h>   // hardware watchdog
+#include <esp_system.h>
 #include <MPU6050.h>    // Electronic Cats MPU6050 (maintained i2cdevlib): https://github.com/ElectronicCats/mpu6050
 #include "bailey.h"
 #include <FastAccelStepper.h>  // https://github.com/gin66/FastAccelStepper
@@ -53,14 +55,22 @@ char lastEvent[32] = "Boot";
 void setEvent(const char *event) {
   strncpy(lastEvent, event, sizeof(lastEvent) - 1);
   lastEvent[sizeof(lastEvent) - 1] = 0;
-  Serial.print(F("EV,"));
-  Serial.println(lastEvent);
+  out.print(F("EV,"));
+  out.println(lastEvent);
+}
+
+// Hardware watchdog: if loop() stops running for WATCHDOG_MS (a hang, a
+// deadlock, an endless loop), the ESP32 restarts. A restart stops the step
+// pulses, so the wheels stop instead of carrying on at their last speed.
+// Started after setup(): the gyro calibration at boot takes longer than that.
+static void watchdogStart() {
+  esp_task_wdt_config_t wdt = { WATCHDOG_MS, 0, true };   // timeout, no idle-task checks, panic -> restart
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+  esp_task_wdt_add(NULL);                                 // this task: the Arduino loop
 }
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-  // The ESP32 emulates EEPROM in flash: reserve it before the first read.
-  EEPROM.begin(EEPROM_BYTES);
 
   if (!loadSettings()) {
     loadDefaultSettings();
@@ -82,10 +92,19 @@ void setup() {
 
   lastControlUs = micros();
   remoteInit();
+  esp_reset_reason_t why = esp_reset_reason();
+  if (why == ESP_RST_TASK_WDT || why == ESP_RST_INT_WDT || why == ESP_RST_WDT)
+    out.println(F("E, restarted by the watchdog: the firmware had stopped running"));
+  else if (why == ESP_RST_BROWNOUT)
+    out.println(F("E, restarted after a brownout: check the power supply"));
+  else if (why == ESP_RST_PANIC)
+    out.println(F("E, restarted after a crash"));
+  watchdogStart();
   setEvent("Ready");
 }
 
 void loop() {
+  esp_task_wdt_reset();
   commsRead();
 
   // Drive watchdog: the remote repeats Throttle/Steer while they are non-zero,

@@ -32,6 +32,7 @@ import { RobotLink } from './robotLink.js';
 import { DriveControl } from './drive.js';
 import { TelemetryLog } from './telemetryLog.js';
 import { Camera } from './camera.js';
+import { whepProxy } from './webrtc.js';
 import { Gamepad } from './gamepad.js';
 import * as system from './system.js';
 import { SERVER_DIR } from './config.js';
@@ -119,7 +120,14 @@ export function createApp(config, { log = console, link: linkOverride, gamepad: 
       return;
     }
     if (!msg) return;
-    if (msg.type !== 'telemetry') pushConsole('in', line);
+    if (msg.type === 'corrupt') {
+      // A line cut short or run together on the USB link: drop it.
+      robot.badLines = (robot.badLines || 0) + 1;
+      pushConsole('in', `${line}   <- bad checksum, ignored`);
+      log.warn(`robot line with a bad checksum: ${JSON.stringify(line)}`);
+      return;
+    }
+    if (msg.type !== 'telemetry') pushConsole('in', line.replace(/\*[0-9A-Fa-f]{2}$/, ''));
 
     switch (msg.type) {
       case 'telemetry':
@@ -185,8 +193,20 @@ export function createApp(config, { log = console, link: linkOverride, gamepad: 
   // --- HTTP ---
   app.disable('x-powered-by');
   app.use(express.static(path.join(SERVER_DIR, 'public')));
-  app.get('/stream.mjpg', (req, res) => camera.stream(req, res));
-  app.get('/snapshot.jpg', (req, res) => camera.snapshot(req, res));
+  // uPlot (charts), served from node_modules so the UI works without internet.
+  app.use('/vendor/uplot', express.static(path.join(SERVER_DIR, 'node_modules/uplot/dist')));
+  // Video: WebRTC through MediaMTX (camera.mode "webrtc", see webrtc.js), or
+  // MJPEG from rpicam-vid served here (camera.mode "mjpeg", see camera.js).
+  const videoMode = config.camera.mode === 'mjpeg' ? 'mjpeg' : 'webrtc';
+  if (videoMode === 'webrtc') {
+    if (config.camera.enabled) app.use('/mediamtx', whepProxy(config.camera.mediamtx, { log }));
+    const notHere = (req, res) => res.status(404).json({ error: 'video is WebRTC (camera.mode in config.json)' });
+    app.get('/stream.mjpg', notHere);
+    app.get('/snapshot.jpg', notHere);
+  } else {
+    app.get('/stream.mjpg', (req, res) => camera.stream(req, res));
+    app.get('/snapshot.jpg', (req, res) => camera.snapshot(req, res));
+  }
   app.get('/api/status', (req, res) => {
     res.json({ version: VERSION, robot, camera: { status: camera.status, error: camera.error }, logging: loggingStatus(), system: system.stats() });
   });
@@ -212,7 +232,7 @@ export function createApp(config, { log = console, link: linkOverride, gamepad: 
       robot,
       events,
       console: consoleLines,
-      camera: { status: camera.status, error: camera.error, enabled: config.camera.enabled },
+      camera: { status: camera.status, error: camera.error, enabled: config.camera.enabled, mode: videoMode },
       logging: loggingStatus(),
       system: system.stats(),
       allowShutdown: config.system.allowShutdown,

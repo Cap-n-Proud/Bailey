@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 ./build.sh
 
 fail=0
-for s in balance push drive fall autotune scaling disturbance kalman lqrsolver limits commands eeprom motortest; do
+for s in balance push drive fall autotune scaling disturbance kalman lqrsolver limits commands eeprom watchdog motortest; do
   printf '== sim '
   ./sim $s || fail=1
 done

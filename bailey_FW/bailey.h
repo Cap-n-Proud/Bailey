@@ -9,17 +9,35 @@
 #include <stddef.h>
 #include <math.h>
 #include "config.h"
+// ---------- serial link ----------
+// Every line, both ways, ends in "*HH": a CRC-8 (polynomial 0x07) of the text
+// before the '*', in hex. It catches lines that were cut short or run
+// together (a byte dropped from a full buffer). Lines without one are still
+// accepted, for typing commands by hand in a serial monitor.
+inline uint8_t crc8(uint8_t crc, uint8_t c) {
+  crc ^= c;
+  for (uint8_t i = 0; i < 8; i++) crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+  return crc;
+}
+// All protocol output goes through `out` (comms.ino): it passes the text to
+// Serial and adds the checksum at the end of each line.
+class LineOut : public Print {
+  uint8_t crc = 0;
+ public:
+  using Print::write;
+  size_t write(uint8_t c) override;
+};
+extern LineOut out;
+
 // Eigen 3.4 for the matrix maths: Arduino library "Eigen" (hideakitai/ArduinoEigen).
 #include <ArduinoEigenDense.h>
 
 #define SETTINGS_MAGIC   0xBA17
 #define SETTINGS_VERSION 6
-#define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
-#define EEPROM_BYTES     1024    // ESP32: size of the flash area emulating EEPROM
 #define G_ACC 9.81f              // m/s^2
 
 // Everything that can be changed at runtime with "SCMD <name> <value>".
-// Plain old data only, so it can be stored in EEPROM byte by byte.
+// Plain old data only, so it can be stored in flash byte by byte.
 struct Settings {
   uint16_t magic;
   uint8_t  version;

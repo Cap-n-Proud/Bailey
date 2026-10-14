@@ -10,9 +10,43 @@
 //   AT       autotune progress and result   TEST      motor test result
 //   ***      configuration dump             E         error
 
-#define LINE_LEN 64
+#define LINE_LEN 80          // longest command plus its "*HH" checksum
 static char lineBuf[LINE_LEN];
 static uint8_t lineLen = 0;
+
+LineOut out;
+
+size_t LineOut::write(uint8_t c) {
+  if (c == '\r') return 1;   // println's "\r\n": the checksum goes before it
+  if (c == '\n') {
+    static const char hex[] = "0123456789ABCDEF";
+    Serial.write('*');
+    Serial.write(hex[crc >> 4]);
+    Serial.write(hex[crc & 15]);
+    Serial.write('\r');
+    Serial.write('\n');
+    crc = 0;
+    return 1;
+  }
+  crc = crc8(crc, c);
+  return Serial.write(c);
+}
+
+// Checks and removes a "*HH" checksum. Returns false for a line whose
+// checksum doesn't match (lines without one pass unchanged).
+static bool checkLine(char *line) {
+  size_t n = strlen(line);
+  if (n < 3 || line[n - 3] != '*') return true;
+  char *end;
+  long expected = strtol(line + n - 2, &end, 16);
+  if (*end != 0) return true;   // not "*HH": just text that happens to contain '*'
+  line[n - 3] = 0;
+  uint8_t crc = 0;
+  for (const char *p = line; *p; p++) crc = crc8(crc, *p);
+  return crc == expected;
+}
+
+unsigned long badLines = 0;     // lines dropped for a wrong checksum (printConfig)
 
 void commsRead() {
   // Non-blocking: only consume what has arrived, never wait for more.
@@ -149,13 +183,13 @@ static const IntParam intParams[] = {
 #define COUNT(a) (sizeof(a) / sizeof(a[0]))
 
 static void unknownCommand(const char *arg, const char *value) {
-  Serial.print(F("E, Unknown command "));
-  Serial.print(arg ? arg : "");
+  out.print(F("E, Unknown command "));
+  out.print(arg ? arg : "");
   if (value) {
-    Serial.print(F(" arg "));
-    Serial.print(value);
+    out.print(F(" arg "));
+    out.print(value);
   }
-  Serial.println();
+  out.println();
 }
 
 static bool setParam(const char *arg, const char *value) {
@@ -166,7 +200,7 @@ static bool setParam(const char *arg, const char *value) {
       if (strncmp_P(arg, PSTR("lqrMax"), 6) == 0) {
         if (v <= 0) return true;
         lqrWeightsChanged = true;
-        if (state == STATE_BALANCING) Serial.println(F("E, LQR weights apply when the motors are off"));
+        if (state == STATE_BALANCING) out.println(F("E, LQR weights apply when the motors are off"));
       }
       if (floatParams[i].value == &cfg.calibratedZeroAngle) lqrZeroShifted(v - cfg.calibratedZeroAngle);
       *floatParams[i].value = v;
@@ -195,7 +229,7 @@ static void setCommand(const char *arg, const char *value) {
   if (is(arg, P_controller)) {
     // Switching controllers mid-balance would hand over a half-wound state.
     if (motorsEnabled) {
-      Serial.println(F("E, switch controller with the motors off"));
+      out.println(F("E, switch controller with the motors off"));
       return;
     }
     setParam(arg, value);
@@ -241,7 +275,7 @@ static void setCommand(const char *arg, const char *value) {
       motorTestPower = constrain(v, -100, 100);
       motorTestUntil = millis() + 1000;
     } else {
-      Serial.println(F("E, MotorTest needs Motors 0"));
+      out.println(F("E, MotorTest needs Motors 0"));
     }
   } else if (is(arg, PSTR("resetPID"))) {
     cfg.anglePIDConKp = cfg.anglePIDConKi = cfg.anglePIDConKd = 0;
@@ -257,16 +291,21 @@ static void setCommand(const char *arg, const char *value) {
     PIDParamTX();
   } else if (is(arg, PSTR("E_EEPROM"))) {
     eraseSettings();
-    setEvent("EEPROM erased");
+    setEvent("Settings erased");
   } else if (is(arg, PSTR("test"))) {
-    Serial.print(F("this is a test arg "));
-    Serial.println(value);
+    out.print(F("this is a test arg "));
+    out.println(value);
   } else {
     unknownCommand(arg, value);
   }
 }
 
 void handleLine(char *line) {
+  if (!checkLine(line)) {
+    badLines++;
+    out.println(F("E, checksum mismatch, line ignored"));
+    return;
+  }
   char *cmd = strtok(line, " \t");
   char *arg = strtok(NULL, " \t");
   char *value = strtok(NULL, " \t");
@@ -279,10 +318,10 @@ void handleLine(char *line) {
     }
     // Echo, except for the drive commands that arrive ~10 times a second.
     if (!is(arg, PSTR("Throttle")) && !is(arg, PSTR("Steer"))) {
-      Serial.print(F("SCMD "));
-      Serial.print(arg);
-      Serial.print(' ');
-      Serial.println(value);
+      out.print(F("SCMD "));
+      out.print(arg);
+      out.print(' ');
+      out.println(value);
     }
     setCommand(arg, value);
   } else if (is(cmd, PSTR("READ"))) {
@@ -301,23 +340,23 @@ void handleLine(char *line) {
 // ---------------- Outgoing ----------------
 
 static void printField(float v, uint8_t decimals) {
-  Serial.print(',');
-  Serial.print(v, decimals);
+  out.print(',');
+  out.print(v, decimals);
 }
 
 void remoteInit() {
   // The server builds its dictionaries from these headers, so the order must
   // match telemetryTX(), PIDParamTX() and SYSParamTX().
-  Serial.println(F("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal,balAngle"));
-  Serial.println(F("PIDH,speedPIDKp,speedPIDKi,speedPIDKd,anglePIDConKp,anglePIDConKi,anglePIDConKd,"
+  out.println(F("TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal,balAngle"));
+  out.println(F("PIDH,speedPIDKp,speedPIDKi,speedPIDKd,anglePIDConKp,anglePIDConKi,anglePIDConKd,"
                    "anglePIDAggKp,anglePIDAggKi,anglePIDAggKd,TriggerAngleAggressive,calibratedZeroAngle,OPT,controller"));
-  Serial.println(F("SYSH,FirmwareVersion,Board,ControlPeriodUs"));
+  out.println(F("SYSH,FirmwareVersion,Board,ControlPeriodUs"));
 }
 
 void telemetryTX() {
   // Short (~65 chars): at 115200 baud the 64-byte TX buffer drains in ~6 ms, so
   // printing never holds up the control loop for more than a fraction of a ms.
-  Serial.print('T');
+  out.print('T');
   printField(yaw, 1);
   printField(pitch, 2);
   printField(roll, 1);
@@ -325,37 +364,37 @@ void telemetryTX() {
   printField(iste, 3);
   printField(leftSpeed, 1);
   printField(rightSpeed, 1);
-  Serial.print(',');
-  Serial.print(maxLoopUs);
-  Serial.print(',');
-  Serial.print((int)state);
+  out.print(',');
+  out.print(maxLoopUs);
+  out.print(',');
+  out.print((int)state);
   printField(balanceAngle, 2);     // pitch the disturbance observer says the robot balances at
-  Serial.println();
+  out.println();
   iste = 0;
   maxLoopUs = 0;
 }
 
 void debugTX() {
   static const char *const names[] = { "OFF", "WAIT", "BAL", "FALL" };
-  Serial.print(names[state]);
-  Serial.print(F(" pitch:"));
-  Serial.print(pitch, 2);
-  Serial.print(F(" raw:"));
-  Serial.print(pitchRaw, 2);
-  Serial.print(F(" set:"));
-  Serial.print(angleSetpoint, 2);
-  Serial.print(F(" out:"));
-  Serial.print(angleOutput, 1);
-  Serial.print(F(" spd:"));
-  Serial.print(wheelSpeed, 1);
-  Serial.print('/');
-  Serial.print(speedSetpoint, 1);
-  Serial.print(F(" L:"));
-  Serial.print(leftSpeed, 1);
-  Serial.print(F(" R:"));
-  Serial.print(rightSpeed, 1);
-  Serial.print(F(" us:"));
-  Serial.println(maxLoopUs);
+  out.print(names[state]);
+  out.print(F(" pitch:"));
+  out.print(pitch, 2);
+  out.print(F(" raw:"));
+  out.print(pitchRaw, 2);
+  out.print(F(" set:"));
+  out.print(angleSetpoint, 2);
+  out.print(F(" out:"));
+  out.print(angleOutput, 1);
+  out.print(F(" spd:"));
+  out.print(wheelSpeed, 1);
+  out.print('/');
+  out.print(speedSetpoint, 1);
+  out.print(F(" L:"));
+  out.print(leftSpeed, 1);
+  out.print(F(" R:"));
+  out.print(rightSpeed, 1);
+  out.print(F(" us:"));
+  out.println(maxLoopUs);
   maxLoopUs = 0;
 }
 
@@ -363,55 +402,57 @@ void motorTestReport() {
   // Speeds measured at the end of a MotorTest run.
   if (motorTestUntil == 0 || millis() < motorTestUntil) return;
   motorTestUntil = 0;
-  Serial.print(F("TEST"));
+  out.print(F("TEST"));
   printField(leftSpeed, 1);
   printField(rightSpeed, 1);
-  Serial.println();
+  out.println();
 }
 
 void PIDParamTX() {
   // Same integer scaling as the "SCMD" setters so the UI sliders round-trip.
-  Serial.print(F("PID,"));
-  Serial.print(lround(cfg.speedPIDKp * 10000)); Serial.print(',');
-  Serial.print(lround(cfg.speedPIDKi * 10000)); Serial.print(',');
-  Serial.print(lround(cfg.speedPIDKd * 10000)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDConKp * 100)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDConKi * 100)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDConKd * 100)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDAggKp * 100)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDAggKi * 100)); Serial.print(',');
-  Serial.print(lround(cfg.anglePIDAggKd * 100)); Serial.print(',');
-  Serial.print(lround(cfg.TriggerAngleAggressive * 100)); Serial.print(',');
-  Serial.print(lround(cfg.calibratedZeroAngle * 100)); Serial.print(',');
-  Serial.print(2); Serial.print(',');   // OPT: motor type, always 2 (steppers) since firmware 3
-  Serial.println(cfg.controller);
+  out.print(F("PID,"));
+  out.print(lround(cfg.speedPIDKp * 10000)); out.print(',');
+  out.print(lround(cfg.speedPIDKi * 10000)); out.print(',');
+  out.print(lround(cfg.speedPIDKd * 10000)); out.print(',');
+  out.print(lround(cfg.anglePIDConKp * 100)); out.print(',');
+  out.print(lround(cfg.anglePIDConKi * 100)); out.print(',');
+  out.print(lround(cfg.anglePIDConKd * 100)); out.print(',');
+  out.print(lround(cfg.anglePIDAggKp * 100)); out.print(',');
+  out.print(lround(cfg.anglePIDAggKi * 100)); out.print(',');
+  out.print(lround(cfg.anglePIDAggKd * 100)); out.print(',');
+  out.print(lround(cfg.TriggerAngleAggressive * 100)); out.print(',');
+  out.print(lround(cfg.calibratedZeroAngle * 100)); out.print(',');
+  out.print(2); out.print(',');   // OPT: motor type, always 2 (steppers) since firmware 3
+  out.println(cfg.controller);
 }
 
 void SYSParamTX() {
-  Serial.print(F("SYS,"));
-  Serial.print(F(FIRMWARE_VERSION));
-  Serial.print(F("," BOARD_NAME ","));
-  Serial.println(CONTROL_PERIOD_US);
+  out.print(F("SYS,"));
+  out.print(F(FIRMWARE_VERSION));
+  out.print(F("," BOARD_NAME ","));
+  out.println(CONTROL_PERIOD_US);
 }
 
 void printConfig() {
-  Serial.print(F("*** pendulumLength = "));
-  Serial.println(cfg.pendulumLength, 3);
-  Serial.print(F("*** pendulumCoupling = "));
-  Serial.println(cfg.pendulumCoupling, 3);
+  out.print(F("*** bad lines (checksum) = "));
+  out.println(badLines);
+  out.print(F("*** pendulumLength = "));
+  out.println(cfg.pendulumLength, 3);
+  out.print(F("*** pendulumCoupling = "));
+  out.println(cfg.pendulumCoupling, 3);
   for (uint8_t i = 0; i < COUNT(floatParams); i++) {
-    Serial.print(F("*** "));
-    Serial.print((const __FlashStringHelper *)floatParams[i].name);
-    Serial.print(F(" = "));
-    Serial.println(*floatParams[i].value, 4);
+    out.print(F("*** "));
+    out.print((const __FlashStringHelper *)floatParams[i].name);
+    out.print(F(" = "));
+    out.println(*floatParams[i].value, 4);
   }
   for (uint8_t i = 0; i < COUNT(intParams); i++) {
-    Serial.print(F("*** "));
-    Serial.print((const __FlashStringHelper *)intParams[i].name);
-    Serial.print(F(" = "));
+    out.print(F("*** "));
+    out.print((const __FlashStringHelper *)intParams[i].name);
+    out.print(F(" = "));
     if (intParams[i].size == 1)
-      Serial.println(*(uint8_t *)intParams[i].value);
+      out.println(*(uint8_t *)intParams[i].value);
     else
-      Serial.println(*(uint16_t *)intParams[i].value);
+      out.println(*(uint16_t *)intParams[i].value);
   }
 }

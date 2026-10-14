@@ -47,34 +47,40 @@ inline int analogRead(uint8_t) { return 0; }
 inline void randomSeed(unsigned long s) { srand(s); }
 inline long random(long lo, long hi) { return lo + rand() % (hi - lo); }
 
-class SimSerial {
+// Like Arduino's Print: everything goes through write(uint8_t).
+class Print {
+ public:
+  virtual ~Print() {}
+  virtual size_t write(uint8_t c) = 0;
+  size_t write(const char *s) { size_t n = 0; while (*s) n += write((uint8_t)*s++); return n; }
+  size_t print(const __FlashStringHelper *s) { return write((const char *)s); }
+  size_t print(const char *s) { return write(s); }
+  size_t print(char c) { return write((uint8_t)c); }
+  size_t print(int v) { return write(std::to_string(v).c_str()); }
+  size_t print(unsigned int v) { return write(std::to_string(v).c_str()); }
+  size_t print(long v) { return write(std::to_string(v).c_str()); }
+  size_t print(unsigned long v) { return write(std::to_string(v).c_str()); }
+  size_t print(double v, int d = 2) { char b[64]; snprintf(b, sizeof b, "%.*f", d, v); return write(b); }
+  template <class T> size_t println(T v) { return print(v) + write("\r\n"); }
+  size_t println(double v, int d) { return print(v, d) + write("\r\n"); }
+  size_t println() { return write("\r\n"); }
+};
+
+class SimSerial : public Print {
  public:
   std::deque<char> in;
-  std::string out;
   std::string line;          // current output line
   void (*onLine)(const std::string &) = nullptr;
   void begin(long) {}
   int available() { return (int)in.size(); }
   int read() { if (in.empty()) return -1; char c = in.front(); in.pop_front(); return c; }
   void send(const std::string &s) { for (char c : s) in.push_back(c); }
-  void put(const std::string &s) {
-    for (char c : s) {
-      out += c;
-      if (c == '\n') { if (onLine) onLine(line); line.clear(); }
-      else if (c != '\r') line += c;
-    }
+  using Print::write;
+  size_t write(uint8_t c) override {
+    if (c == '\n') { if (onLine) onLine(line); line.clear(); }
+    else if (c != '\r') line += (char)c;
+    return 1;
   }
-  void print(const __FlashStringHelper *s) { put((const char *)s); }
-  void print(const char *s) { put(s); }
-  void print(char c) { put(std::string(1, c)); }
-  void print(int v) { put(std::to_string(v)); }
-  void print(unsigned int v) { put(std::to_string(v)); }
-  void print(long v) { put(std::to_string(v)); }
-  void print(unsigned long v) { put(std::to_string(v)); }
-  void print(double v, int d = 2) { char b[64]; snprintf(b, sizeof b, "%.*f", d, v); put(b); }
-  template <class T> void println(T v) { print(v); put("\r\n"); }
-  void println(double v, int d) { print(v, d); put("\r\n"); }
-  void println() { put("\r\n"); }
 };
 extern SimSerial Serial;
 

@@ -9,6 +9,8 @@
   },
   "camera": {
     "enabled": true,
+    "mode": "webrtc",
+    "mediamtx": "http://127.0.0.1:8889",
     "command": "rpicam-vid",
     "width": 640,
     "height": 480,

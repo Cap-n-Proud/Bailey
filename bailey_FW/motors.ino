@@ -36,7 +36,7 @@ void motorsSetup() {
   stepperLeft = engine.stepperConnectToPin(PIN_LEFT_STEP);
   stepperRight = engine.stepperConnectToPin(PIN_RIGHT_STEP);
   if (!stepperLeft || !stepperRight) {
-    Serial.println(F("E, stepper pins not usable by FastAccelStepper"));
+    out.println(F("E, stepper pins not usable by FastAccelStepper"));
     return;
   }
   stepperLeft->setDirectionPin(PIN_LEFT_DIR);

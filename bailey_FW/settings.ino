@@ -1,6 +1,6 @@
-// Settings: defaults and EEPROM storage.
+// Settings: defaults and storage in flash.
 // Stored settings are only used when the magic number, layout version and
-// checksum all match, so a new firmware layout or a blank EEPROM falls back to
+// checksum all match, so a new firmware layout or blank flash falls back to
 // the defaults instead of loading garbage.
 
 void loadDefaultSettings() {
@@ -65,7 +65,6 @@ void loadDefaultSettings() {
   cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud
 }
 
-static_assert(SETTINGS_ADDRESS + sizeof(Settings) <= EEPROM_BYTES, "Settings don't fit in EEPROM_BYTES");
 
 static uint16_t settingsCrc(const Settings &s) {
   // Fletcher-16 over everything except the crc field itself.
@@ -78,9 +77,23 @@ static uint16_t settingsCrc(const Settings &s) {
   return (b << 8) | a;
 }
 
+// Stored with the ESP32's Preferences library (NVS): written in one piece,
+// wear-levelled, and still intact if the power fails halfway through a save.
+// The magic, layout version and checksum checks stay: a firmware with a
+// different Settings layout must not load the old bytes.
+static Preferences prefs;
+#define PREFS_NAMESPACE "bailey"
+#define PREFS_KEY       "settings"
+
 bool loadSettings() {
   Settings stored;
-  EEPROM.get(SETTINGS_ADDRESS, stored);
+  size_t n = 0;
+  if (prefs.begin(PREFS_NAMESPACE, true)) {
+    n = prefs.getBytes(PREFS_KEY, &stored, sizeof(stored));
+    prefs.end();
+  }
+  if (n != sizeof(stored))
+    return false;
   if (stored.magic != SETTINGS_MAGIC || stored.version != SETTINGS_VERSION)
     return false;
   if (stored.crc != settingsCrc(stored))
@@ -93,12 +106,14 @@ void saveSettings() {
   cfg.magic = SETTINGS_MAGIC;
   cfg.version = SETTINGS_VERSION;
   cfg.crc = settingsCrc(cfg);
-  EEPROM.put(SETTINGS_ADDRESS, cfg);   // put() only writes bytes that changed
-  EEPROM.commit();                     // the ESP32 writes its flash copy only on commit
+  if (!prefs.begin(PREFS_NAMESPACE, false) || prefs.putBytes(PREFS_KEY, &cfg, sizeof(cfg)) != sizeof(cfg))
+    out.println(F("E, could not save the settings"));
+  prefs.end();
 }
 
 void eraseSettings() {
-  for (unsigned int i = 0; i < sizeof(Settings); i++)
-    EEPROM.write(SETTINGS_ADDRESS + i, 0xFF);
-  EEPROM.commit();
+  if (prefs.begin(PREFS_NAMESPACE, false)) {
+    prefs.remove(PREFS_KEY);
+    prefs.end();
+  }
 }

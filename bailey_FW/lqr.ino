@@ -126,7 +126,7 @@ bool lqrSolveReference() {
   lqrWeightsChanged = false;
   float kappa = cfg.pendulumCoupling;
   if (!lqrSolve(LQR_REF_LENGTH, kappa, CONTROL_PERIOD_US * 1e-6f, q, r, K)) {
-    Serial.println(F("E, LQR: Riccati equation did not converge, keeping the old gain"));
+    out.println(F("E, LQR: Riccati equation did not converge, keeping the old gain"));
     return false;
   }
   memcpy(lqrKRef, K, sizeof(K));
@@ -164,13 +164,13 @@ void lqrMaintain(bool balancing) {
 }
 
 void LQRParamTX() {
-  Serial.print(F("LQR"));
+  out.print(F("LQR"));
   for (uint8_t i = 0; i < 4; i++) {
-    Serial.print(',');
-    Serial.print(lqrK[i], 3);
+    out.print(',');
+    out.print(lqrK[i], 3);
   }
-  Serial.print(',');
-  Serial.println(lqrLength, 3);
+  out.print(',');
+  out.println(lqrLength, 3);
 }
 
 // The IMU zero moved by delta degrees (autotune, CalibrateZero): the measured

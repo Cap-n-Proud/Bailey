@@ -1,0 +1,41 @@
+# MediaMTX for Bailey's camera (install/install.sh puts it in /etc/mediamtx/bailey.yml).
+#
+# MediaMTX (https://github.com/bluenviron/mediamtx) owns the Pi camera and
+# streams it to the browser with WebRTC: a fraction of the delay of the MJPEG
+# stream, and H.264 instead of a JPEG per frame, so far less Wi-Fi bandwidth.
+# The Bailey server forwards the WebRTC handshake (WHEP) on its own port
+# (/mediamtx/cam/whep), so MediaMTX itself only listens on localhost; the video
+# then flows over UDP port 8189 straight to the browser.
+logLevel: warn
+
+api: false
+metrics: false
+pprof: false
+playback: false
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+
+webrtc: true
+webrtcAddress: 127.0.0.1:8889
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: true
+
+# Reading "cam" only, and only from this machine (the Bailey server).
+authInternalUsers:
+  - user: any
+    pass:
+    ips: [127.0.0.1/32, "::1/128"]
+    permissions:
+      - action: read
+        path: cam
+
+paths:
+  cam:
+    source: rpiCamera
+    rpiCameraWidth: 640
+    rpiCameraHeight: 480
+    rpiCameraFPS: 30
+    rpiCameraBitrate: 1500000
+    rpiCameraIDRPeriod: 30      # a keyframe every second: quick start for new viewers

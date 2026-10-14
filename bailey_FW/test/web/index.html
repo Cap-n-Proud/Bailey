@@ -324,7 +324,8 @@ function logLine(text, kind = '') {
 let firmwareL = 0.3;
 let lastTelemetryShown = 0;
 function onSerial(text) {
-  for (const line of text.split('\n')) {
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\*[0-9A-F]{2}$/, '');   // the firmware's checksum, see bailey.h
     if (!line) continue;
     if (line.startsWith('T,')) {
       // Telemetry streams at 10 Hz: show one line every 2 s so the rest stays readable.

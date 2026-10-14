@@ -141,8 +141,8 @@ static void startPhase(AutotunePhase p) {
   score = 0;
   scoreTime = 0;
   static const char *const names[] = { "IDLE", "BASELINE", "MEASURE", "VERIFY" };
-  Serial.print(F("AT,"));
-  Serial.println(names[p]);
+  out.print(F("AT,"));
+  out.println(names[p]);
 }
 
 bool autotuneRunning() {
@@ -152,11 +152,11 @@ bool autotuneRunning() {
 void autotuneStart() {
   if (phase != AT_IDLE) return;
   if (state != STATE_BALANCING) {
-    Serial.println(F("E, AUTOTUNE needs the robot balancing"));
+    out.println(F("E, AUTOTUNE needs the robot balancing"));
     return;
   }
   if (throttleCmd != 0 || steerCmd != 0) {
-    Serial.println(F("E, AUTOTUNE needs throttle and steer at 0"));
+    out.println(F("E, AUTOTUNE needs throttle and steer at 0"));
     return;
   }
   saveTuning();
@@ -169,8 +169,8 @@ void autotuneAbort(const char *reason) {
   if (phase == AT_IDLE) return;
   restoreTuning();
   phase = AT_IDLE;
-  Serial.print(F("E, autotune aborted: "));
-  Serial.println(reason);
+  out.print(F("E, autotune aborted: "));
+  out.println(reason);
   setEvent("Autotune aborted");
   PIDParamTX();
 }
@@ -200,20 +200,20 @@ float autotuneAccelExcitation() {
 }
 
 static void report(bool accepted, float L, float kappa, float offset, float r2, float after) {
-  Serial.print(F("AT,RESULT,"));
-  Serial.print(accepted ? 1 : 0);
-  Serial.print(',');
-  Serial.print(L, 3);
-  Serial.print(',');
-  Serial.print(kappa, 3);
-  Serial.print(',');
-  Serial.print(offset, 2);
-  Serial.print(',');
-  Serial.print(r2, 2);
-  Serial.print(',');
-  Serial.print(baselineScore, 4);
-  Serial.print(',');
-  Serial.println(after, 4);
+  out.print(F("AT,RESULT,"));
+  out.print(accepted ? 1 : 0);
+  out.print(',');
+  out.print(L, 3);
+  out.print(',');
+  out.print(kappa, 3);
+  out.print(',');
+  out.print(offset, 2);
+  out.print(',');
+  out.print(r2, 2);
+  out.print(',');
+  out.print(baselineScore, 4);
+  out.print(',');
+  out.println(after, 4);
 }
 
 // Last fit, kept for the report after verification.

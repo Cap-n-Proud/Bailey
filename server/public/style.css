@@ -98,8 +98,8 @@ input {
 .video {
   position: relative; aspect-ratio: 4 / 3; background: #000; border-radius: 8px; overflow: hidden;
 }
-.video img { width: 100%; height: 100%; object-fit: contain; display: none; }
-.video.on img { display: block; }
+.video img, .video video { width: 100%; height: 100%; object-fit: contain; display: none; }
+.video.on.mjpeg img, .video.on.webrtc video { display: block; }
 .video-off {
   position: absolute; left: 0; right: 0; top: 12px; text-align: center; color: #8d8c84; font-size: 13px;
 }
@@ -135,7 +135,13 @@ input {
 .value.small { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
 .chart { margin: 0; }
 .chart figcaption { font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
-.chart canvas { width: 100%; display: block; }
+.chart > div { width: 100%; min-height: 150px; }
+.chart-bar { gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0 2px; }
+[hidden] { display: none !important; }
+/* uPlot: follow the page's theme */
+.uplot, .u-legend { font-family: inherit; color: var(--text-2); font-size: 12px; }
+.u-legend .u-marker { border-radius: 2px; }
+.u-select { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
 /* Controller selector */
 .controller { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -9,7 +9,9 @@
 #define ARDUINO_ARCH_ESP32 1     // the firmware's only board
 #define BAILEY_SIMULATOR 1       // mpc.ino: solve in line instead of on the second core
 #include "Arduino.h"
-#include "EEPROM.h"
+#include "Preferences.h"
+#include "esp_task_wdt.h"
+#include "esp_system.h"
 #include "Wire.h"
 #include "MPU6050.h"
 #include "FastAccelStepper.h"
@@ -28,7 +30,9 @@ int simPinValue[64];
 int simPwm[64];
 int16_t simAccel[3], simGyro[3];
 SimSerial Serial;
-SimEEPROM EEPROM;
+SimNvs simNvs;
+SimWatchdog simWatchdog;
+esp_reset_reason_t simResetReason = ESP_RST_POWERON;
 SimWire Wire;
 
 #include "../bailey_FW.ino"
@@ -182,7 +186,19 @@ static void setRobotLength(double L) {
 }
 std::vector<std::string> received;
 
-static void onLine(const std::string &l) {
+// What the server does with each line: check the "*HH" checksum and remove it.
+int badChecksums = 0;
+static std::string checked(const std::string &l) {
+  size_t n = l.size();
+  if (n < 3 || l[n - 3] != '*') { badChecksums++; return l; }   // every firmware line has one
+  uint8_t crc = 0;
+  for (size_t i = 0; i < n - 3; i++) crc = crc8(crc, l[i]);
+  if (strtol(l.c_str() + n - 2, nullptr, 16) != crc) badChecksums++;
+  return l.substr(0, n - 3);
+}
+
+static void onLine(const std::string &raw) {
+  std::string l = checked(raw);
   received.push_back(l);
   if (getenv("SIM_VERBOSE")) printf("  < %s\n", l.c_str());
 }
@@ -270,7 +286,7 @@ static void boot() {
   heldThrottle.clear();
   heldSteer.clear();
   remoteConnected = true;
-  // Like a power cycle: runtime state back to power-on values (EEPROM persists).
+  // Like a power cycle: runtime state back to power-on values (flash persists).
   autotuneAbort("reset");
   motorsEnabled = false;
   state = STATE_DISARMED;
@@ -900,22 +916,72 @@ static bool scenarioCommands() {
   send(std::string(200, 'X'));
   run(0.01);
   ok &= check(true, "long line ignored without crashing");
+
+  // Checksums: every line from the firmware carries a valid one; a command
+  // with a good one is executed, a corrupted one is rejected, none is fine.
+  auto withCrc = [](const std::string &l) {
+    uint8_t crc = 0;
+    for (char c : l) crc = crc8(crc, c);
+    char b[8];
+    snprintf(b, sizeof b, "*%02X", crc);
+    return l + b;
+  };
+  received.clear();
+  badChecksums = 0;
+  send(withCrc("SCMD speedPIDKp 4000"));
+  run(0.01);
+  ok &= check(fabs(cfg.speedPIDKp - 0.4f) < 1e-5, "command with a good checksum executed");
+  std::string bad = withCrc("SCMD speedPIDKp 5000");
+  bad[14] = '6';                                     // one character changed in transit
+  send(bad);
+  run(0.01);
+  bool rejected = false;
+  for (auto &l : received) if (l == "E, checksum mismatch, line ignored") rejected = true;
+  ok &= check(fabs(cfg.speedPIDKp - 0.4f) < 1e-5 && rejected, "command with a bad checksum rejected and reported");
+  send("SCMD speedPIDKp 4500");
+  run(0.5);
+  ok &= check(fabs(cfg.speedPIDKp - 0.45f) < 1e-5, "command without a checksum still accepted");
+  ok &= check(badChecksums == 0 && received.size() > 5, "every line from the firmware has a valid checksum");
   return ok;
 }
 
 static bool scenarioEeprom() {
+  simNvs = SimNvs();
   boot();
-  bool ok = check(cfg.magic == SETTINGS_MAGIC, "blank EEPROM -> defaults");
-  ok &= check(EEPROM.begun > 0 && EEPROM.commits > 0, "ESP32: flash EEPROM begun and committed");
-  ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "ESP32: I2C on the configured pins");
+  bool ok = check(cfg.magic == SETTINGS_MAGIC && simNvs.writes == 1, "blank flash -> defaults, saved once");
+  ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "I2C on the configured pins");
   cfg.anglePIDConKp = 12.34f;
   saveSettings();
   cfg.anglePIDConKp = 0;
   ok &= check(loadSettings() && fabs(cfg.anglePIDConKp - 12.34f) < 1e-6, "save/load round trip");
-  EEPROM.mem[SETTINGS_ADDRESS + 10] ^= 0x55;   // corrupt one byte
+  boot();
+  ok &= check(fabs(cfg.anglePIDConKp - 12.34f) < 1e-6, "settings survive a reboot");
+  simNvs.data.begin()->second[10] ^= 0x55;   // corrupt one byte
   ok &= check(!loadSettings(), "corrupted settings are rejected");
+  saveSettings();
+  simNvs.data.begin()->second[2] += 1;       // a different layout version
+  ok &= check(!loadSettings(), "settings from another layout version are rejected");
   eraseSettings();
-  ok &= check(!loadSettings(), "erased settings are rejected");
+  ok &= check(!loadSettings() && simNvs.data.empty(), "erased settings are rejected");
+  return ok;
+}
+
+// Hardware watchdog: armed after setup, fed every loop, and a watchdog
+// restart is reported at boot.
+static bool scenarioWatchdog() {
+  simWatchdog = SimWatchdog();
+  boot();
+  bool ok = check(simWatchdog.added == 1 && simWatchdog.timeoutMs == WATCHDOG_MS, "watchdog armed on the loop task");
+  long before = simWatchdog.feeds;
+  run(1);
+  ok &= check(simWatchdog.feeds - before >= 1000, "fed on every loop pass");
+  received.clear();
+  simResetReason = ESP_RST_TASK_WDT;
+  boot();
+  simResetReason = ESP_RST_POWERON;
+  bool reported = false;
+  for (auto &l : received) if (l.rfind("E, restarted by the watchdog", 0) == 0) reported = true;
+  ok &= check(reported, "a watchdog restart is reported");
   return ok;
 }
 
@@ -946,7 +1012,7 @@ int main(int argc, char **argv) {
     { "scaling", scenarioScaling },   { "disturbance", scenarioDisturbance },
     { "kalman", scenarioKalman },     { "lqrsolver", scenarioLqrSolver },
     { "limits", scenarioLimits },
-    { "eeprom", scenarioEeprom },     { "score", scenarioScore },
+    { "eeprom", scenarioEeprom },     { "watchdog", scenarioWatchdog },     { "score", scenarioScore },
     { "demo", scenarioDemo },         { "lqrgain", scenarioLqrGain },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
   };
   if (argc < 2) {

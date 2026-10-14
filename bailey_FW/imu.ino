@@ -50,7 +50,7 @@ void imuSetup() {
   Wire.setClock(400000);
   mpu.initialize();
   if (!mpu.testConnection())
-    Serial.println(F("E, MPU6050 not found"));
+    out.println(F("E, MPU6050 not found"));
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_500);
   // +/-4 g: stepper acceleration ramps alone reach ~2 g and would clip at +/-2 g.
   mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_4);

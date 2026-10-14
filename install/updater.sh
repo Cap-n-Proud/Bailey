@@ -13,6 +13,9 @@ fi
 (cd server && npm ci --omit=dev)
 sudo systemctl restart bailey
 echo "Updated to $(git log -1 --format='%h %s')."
+if ! git diff --quiet "$before" HEAD -- install; then
+  echo "The installation changed (services, MediaMTX): run install/install.sh again."
+fi
 if ! git diff --quiet "$before" HEAD -- bailey_FW; then
-  echo "The firmware changed too: run install/flash-firmware.sh to update the Arduino."
+  echo "The firmware changed too: run install/flash-firmware.sh to update the ESP32-S3."
 fi
