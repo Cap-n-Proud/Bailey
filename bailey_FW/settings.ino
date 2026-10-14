@@ -1,6 +1,6 @@
-// Settings: defaults and EEPROM storage.
+// Settings: defaults and storage in flash.
 // Stored settings are only used when the magic number, layout version and
-// checksum all match, so a new firmware layout or a blank EEPROM falls back to
+// checksum all match, so a new firmware layout or blank flash falls back to
 // the defaults instead of loading garbage.
 
 void loadDefaultSettings() {
@@ -13,43 +13,27 @@ void loadDefaultSettings() {
   cfg.stepperMaxSpeed = 4000;     // 200-step motor at 1/8 microstepping: 2.5 rev/s
   cfg.stepperMaxAccel = 40000;
   cfg.stepsPerRev = 1600;
-  // Pololu 100:1 gear motor with 64 CPR encoder (x4 decoding): 6400 counts per
-  // wheel turn, ~100 rpm at 12 V.
-  cfg.encoderCountsPerSecFull = 10700;
-  cfg.encoderCountsPerRev = 6400;
-  cfg.motorLeftMinimumSpeed = 55;
-  cfg.motorRightMinimumSpeed = 58;
 
   cfg.imuAxis = 0;
   cfg.imuInvert = 0;
+  cfg.imuAccelCompensation = 1;   // see imu.ino
   cfg.motorLeftInvert = 0;
   cfg.motorRightInvert = 0;
-  cfg.encoderLeftInvert = 0;
-  cfg.encoderRightInvert = 0;
 
   // Gains, checked in the simulator (test/) over a range of body heights, IMU
-  // offsets and noise, and (DC) motor lags. The autotuner replaces the guessed
+  // offsets and noise. The autotuner replaces the guessed
   // pendulum length with a measured one.
-  cfg.pendulumLength = 0.20;
-#if MOTOR_TYPE == MOTOR_STEPPER
+  // Bailey's geometry (94 mm wheels, centre of mass about 15 cm up) gives
+  // about L = 0.3 m and kappa = 1.4; the autotuner measures both.
+  cfg.pendulumLength = 0.30;
+  cfg.pendulumCoupling = 1.35;
   applyGainsForLength(cfg.pendulumLength);
-#else
-  cfg.anglePIDConKp = 16.0;
-  cfg.anglePIDConKi = 6.0;
-  cfg.anglePIDConKd = 3.5;
-  cfg.anglePIDAggKp = cfg.anglePIDConKp * 1.3f;
-  cfg.anglePIDAggKi = cfg.anglePIDConKi * 1.3f;
-  cfg.anglePIDAggKd = cfg.anglePIDConKd * 1.3f;
-  cfg.speedPIDKp = 0.12;
-  cfg.speedPIDKi = 0.02;
-  cfg.speedPIDKd = 0;
-#endif
   cfg.TriggerAngleAggressive = 8.0;
   cfg.anglePIDOutputLimit = 100;
   cfg.calibratedZeroAngle = 0;
   cfg.fallAngle = 40;
 
-  cfg.speedPIDMoveFactor = 0.7;
+  cfg.speedPIDMoveFactor = 1.0;
   cfg.speedPIDOutputLimit = 6;
   cfg.speedFilter = 0.15;
   cfg.speedRamp = 30;
@@ -60,11 +44,7 @@ void loadDefaultSettings() {
 
   cfg.autotuneAmplitude = 0.7;
 
-#if MOTOR_TYPE == MOTOR_STEPPER
   cfg.controller = CONTROLLER_LQR;
-#else
-  cfg.controller = CONTROLLER_PID;
-#endif
   // LQR weights, observer and Kalman settings: chosen in the simulator over
   // robots of 12-30 cm, IMU offsets of +/-2 deg and up to 4x the expected
   // noise, then checked for gyro drift, payload shifts and 7-45 cm robots.
@@ -85,7 +65,6 @@ void loadDefaultSettings() {
   cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud
 }
 
-static_assert(SETTINGS_ADDRESS + sizeof(Settings) <= EEPROM_BYTES, "Settings don't fit in EEPROM_BYTES");
 
 static uint16_t settingsCrc(const Settings &s) {
   // Fletcher-16 over everything except the crc field itself.
@@ -98,9 +77,23 @@ static uint16_t settingsCrc(const Settings &s) {
   return (b << 8) | a;
 }
 
+// Stored with the ESP32's Preferences library (NVS): written in one piece,
+// wear-levelled, and still intact if the power fails halfway through a save.
+// The magic, layout version and checksum checks stay: a firmware with a
+// different Settings layout must not load the old bytes.
+static Preferences prefs;
+#define PREFS_NAMESPACE "bailey"
+#define PREFS_KEY       "settings"
+
 bool loadSettings() {
   Settings stored;
-  EEPROM.get(SETTINGS_ADDRESS, stored);
+  size_t n = 0;
+  if (prefs.begin(PREFS_NAMESPACE, true)) {
+    n = prefs.getBytes(PREFS_KEY, &stored, sizeof(stored));
+    prefs.end();
+  }
+  if (n != sizeof(stored))
+    return false;
   if (stored.magic != SETTINGS_MAGIC || stored.version != SETTINGS_VERSION)
     return false;
   if (stored.crc != settingsCrc(stored))
@@ -113,16 +106,14 @@ void saveSettings() {
   cfg.magic = SETTINGS_MAGIC;
   cfg.version = SETTINGS_VERSION;
   cfg.crc = settingsCrc(cfg);
-  EEPROM.put(SETTINGS_ADDRESS, cfg);   // put() only writes bytes that changed
-#if BOARD_ESP32
-  EEPROM.commit();                     // the ESP32 writes its flash copy only on commit
-#endif
+  if (!prefs.begin(PREFS_NAMESPACE, false) || prefs.putBytes(PREFS_KEY, &cfg, sizeof(cfg)) != sizeof(cfg))
+    out.println(F("E, could not save the settings"));
+  prefs.end();
 }
 
 void eraseSettings() {
-  for (unsigned int i = 0; i < sizeof(Settings); i++)
-    EEPROM.write(SETTINGS_ADDRESS + i, 0xFF);
-#if BOARD_ESP32
-  EEPROM.commit();
-#endif
+  if (prefs.begin(PREFS_NAMESPACE, false)) {
+    prefs.remove(PREFS_KEY);
+    prefs.end();
+  }
 }

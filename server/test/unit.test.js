@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RobotProtocol, scmd, setGain, sanitizeRaw, tagOf } from '../src/protocol.js';
+import { RobotProtocol, scmd, setGain, sanitizeRaw, tagOf, crc8, withChecksum, checkLine } from '../src/protocol.js';
 import { DriveControl } from '../src/drive.js';
 import { JpegSplitter } from '../src/camera.js';
 import { loadConfig } from '../src/config.js';
+import { whepProxy } from '../src/webrtc.js';
+import express from 'express';
 import { Gamepad, findController, driveFrom, parseEvents, encodeEvent, eventSize, ABS, BTN, EV_ABS, EV_KEY } from '../src/gamepad.js';
 import { FakeGamepad } from './fixtures/fake-gamepad.js';
 import path from 'node:path';
@@ -18,6 +20,18 @@ test('tags come from the first field only', () => {
   assert.equal(tagOf(PIDH), 'PIDH');
   assert.equal(tagOf('T,1,2'), 'T');
   assert.equal(tagOf('E, Unknown command'), 'E');
+});
+
+test('lines carry a CRC-8 checksum', () => {
+  assert.equal(crc8('123456789'), 0xf4);                       // CRC-8 (poly 0x07) check value
+  assert.equal(withChecksum('SCMD Motors 1'), `SCMD Motors 1*${crc8('SCMD Motors 1').toString(16).toUpperCase().padStart(2, '0')}`);
+  assert.deepEqual(checkLine(withChecksum('EV,Ready')), { line: 'EV,Ready', ok: true });
+  assert.deepEqual(checkLine('EV,Ready'), { line: 'EV,Ready', ok: true });          // none: accepted
+  const bad = withChecksum('T,0.0,1.5').replace('1.5', '1.6');
+  assert.equal(checkLine(bad).ok, false);
+  const p = new RobotProtocol();
+  assert.equal(p.parse(bad).type, 'corrupt');
+  assert.equal(p.parse(withChecksum('EV,Ready')).text, 'Ready');
 });
 
 test('telemetry is mapped onto the announced header', () => {
@@ -54,10 +68,11 @@ test('events, errors, autotune and motor tests', () => {
   assert.deepEqual(p.parse('EV,Balancing'), { type: 'event', text: 'Balancing' });
   assert.deepEqual(p.parse('E, autotune aborted: driving'), { type: 'error', text: 'autotune aborted: driving' });
   assert.deepEqual(p.parse('AT,MEASURE'), { type: 'autotune', phase: 'MEASURE' });
-  const r = p.parse('AT,RESULT,1,0.202,0.202,0.202,1.72,0.99,0.0027,0.0002');
+  const r = p.parse('AT,RESULT,1,0.305,1.320,1.45,0.99,0.0214,0.0006');
   assert.equal(r.result.accepted, true);
-  assert.equal(r.result.length, 0.202);
-  assert.equal(r.result.zero, 1.72);
+  assert.equal(r.result.length, 0.305);
+  assert.equal(r.result.coupling, 1.32);
+  assert.equal(r.result.zero, 1.45);
   assert.deepEqual(p.parse('TEST,40.0,39.5'), { type: 'motorTest', left: 40, right: 39.5 });
   assert.deepEqual(p.parse('LQR,-8.926,-15.944,-105.718,-11.577,0.200'),
     { type: 'lqr', gain: [-8.926, -15.944, -105.718, -11.577], length: 0.2 });
@@ -145,6 +160,7 @@ test('camera streams MJPEG to several viewers and stops when nobody watches', as
   const { createApp } = await import('../src/app.js');
   const { EventEmitter } = await import('node:events');
   const config = loadConfig(['--serial', '/dev/null-robot']);
+  config.camera.mode = 'mjpeg';
   config.camera.command = new URL('./fixtures/fake-camera.js', import.meta.url).pathname;
   // No robot needed for this test.
   const link = Object.assign(new EventEmitter(), { start() {}, close() {}, write: () => false });
@@ -253,5 +269,42 @@ test('gamepad: drives, presses buttons and stops when the controller goes quiet'
   } finally {
     gamepad.stop();
     fake.close();
+  }
+});
+
+test('WebRTC: only the WHEP handshake is forwarded to MediaMTX', async () => {
+  const calls = [];
+  const fakeFetch = async (url, init) => {
+    calls.push({ url, method: init.method, body: init.body });
+    return new Response('v=0 answer', { status: 201, headers: { 'content-type': 'application/sdp', location: '/cam/whep/abc123' } });
+  };
+  const app = express();
+  app.use('/mediamtx', whepProxy('http://127.0.0.1:8889', { log: { warn() {} }, fetchImpl: fakeFetch }));
+  const server = app.listen(0);
+  const base = `http://localhost:${server.address().port}/mediamtx`;
+  try {
+    const res = await fetch(`${base}/cam/whep`, { method: 'POST', headers: { 'content-type': 'application/sdp' }, body: 'v=0 offer' });
+    assert.equal(res.status, 201);
+    assert.equal(await res.text(), 'v=0 answer');
+    assert.equal(res.headers.get('location'), '/mediamtx/cam/whep/abc123');   // back through this server
+    assert.deepEqual(calls[0], { url: 'http://127.0.0.1:8889/cam/whep', method: 'POST', body: 'v=0 offer' });
+    assert.equal((await fetch(`${base}/cam/whep/abc123`, { method: 'DELETE' })).status, 201);
+    // Anything else is not forwarded: other paths, other methods.
+    for (const [path, method] of [['v3/config/global/get', 'GET'], ['cam/whep', 'GET'], ['other/whep', 'POST'], ['cam/whep/a/b', 'POST']]) {
+      assert.equal((await fetch(`${base}/${path}`, { method })).status, 404, `${method} ${path}`);
+    }
+    assert.equal(calls.length, 2);
+  } finally {
+    server.close();
+  }
+  // MediaMTX not running: a clear 502.
+  const down = express();
+  down.use('/mediamtx', whepProxy('http://127.0.0.1:1', { log: { warn() {} } }));
+  const s2 = down.listen(0);
+  try {
+    const res = await fetch(`http://localhost:${s2.address().port}/mediamtx/cam/whep`, { method: 'POST', headers: { 'content-type': 'application/sdp' }, body: 'x' });
+    assert.equal(res.status, 502);
+  } finally {
+    s2.close();
   }
 });

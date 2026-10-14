@@ -7,7 +7,7 @@ Runs on the robot's Raspberry Pi. Serves the web UI, streams the camera and talk
 ```
 npm install
 npm start                # real robot on /dev/ttyACM0
-npm run sim              # simulated robot, no hardware needed (build it first: ../bailey_FW/test/run_tests.sh)
+npm run sim              # simulated robot, no hardware needed (build it first: ../bailey_FW/test/build.sh)
 npm test                 # unit tests + end-to-end tests against the simulator (~45 s)
 ```
 
@@ -19,13 +19,19 @@ The web UI
 
 * **Drive:** **Motors on** / **Stop**, and a joystick (mouse, touch or arrow keys; Space = stop).
   The robot starts balancing once it's held upright.
-* **Live:** pitch and wheel speed charts (20 s), the control loop time (must stay below the control period: 2000 µs on the ESP32-S3, 5000 µs on
-  the Mega),
+* **Live:** pitch, balance angle and wheel speed charts ([uPlot](https://github.com/leeoniya/uPlot):
+  20 s, 1 min or 5 min of history, drag to zoom), the control loop time (must stay below the
+  control period, 2000 µs),
   the wobble, and the balance angle found by the disturbance observer.
-* **Video:** a camera stream with pitch and heading overlaid. The camera only runs while someone
-  is watching.
+* **Video:** the camera with pitch and heading overlaid. By default it is WebRTC from
+  [MediaMTX](https://github.com/bluenviron/mediamtx) (installed by `install/install.sh`,
+  configured in `install/mediamtx.yml`): H.264 with a fraction of MJPEG's delay and bandwidth.
+  The handshake goes through this server (`/mediamtx/cam/whep`); the video itself uses UDP port
+  8189. With `camera.mode` set to `"mjpeg"` the server streams MJPEG from `rpicam-vid` instead,
+  only while someone watches; stop MediaMTX first (`sudo systemctl disable --now mediamtx`), since
+  only one program can use the camera.
 * **Tuning:**
-  * **Controller:** LQR (default on steppers), MPC (ESP32-S3) or PID, with the LQR gain and pendulum length shown.
+  * **Controller:** LQR (default), MPC or PID, with the LQR gain and pendulum length shown.
   * **Autotune** (about 30 s, while balancing) measures the robot and sets its gains and zero.
   * **Calibrate zero**, **Motor test**, **Save to EEPROM** and **Load defaults**.
   * **Pendulum length**, if you've measured it.
@@ -40,6 +46,9 @@ The web UI
   commands.
 * **Raspberry Pi:** temperature, load and addresses; recording telemetry to CSV (in
   `~/bailey-logs`); reboot and shutdown.
+
+Every line on the serial link, both ways, ends in a CRC-8 checksum (`*HH`); lines that were cut
+short or run together are dropped (they show in the console marked "bad checksum").
 
 Safety: the browser repeats joystick commands 10 times a second while you drive. If they stop
 arriving, the server and then the firmware stop the robot:
@@ -69,8 +78,10 @@ not in git), for example:
 | `serial.port` | `/dev/ttyACM0` | `sim` = simulator |
 | `serial.baudRate` | 115200 | must match `SERIAL_BAUD` in the firmware |
 | `camera.enabled` | true | |
+| `camera.mode` | `webrtc` | `webrtc` (MediaMTX) or `mjpeg` |
+| `camera.mediamtx` | `http://127.0.0.1:8889` | MediaMTX's WebRTC address (only this server talks to it) |
 | `camera.command` | `rpicam-vid` | falls back to `libcamera-vid` (older Raspberry Pi OS) |
-| `camera.width/height/fps/quality` | 640×480, 15, 70 | MJPEG |
+| `camera.width/height/fps/quality` | 640×480, 15, 70 | MJPEG only (WebRTC: `install/mediamtx.yml`) |
 | `telemetry.logDir` | `~/bailey-logs` | |
 | `system.allowShutdown` | true | reboot/shutdown buttons |
 | `gamepad.enabled` | true | PS4/PS5 controller |
@@ -89,7 +100,8 @@ Code
 | `src/protocol.js` | the firmware's serial protocol (pure functions, unit tested) |
 | `src/robotLink.js` | serial port with automatic reconnect, or the simulator process |
 | `src/drive.js` | joystick to Throttle/Steer, with repeat and timeouts |
-| `src/camera.js` | `rpicam-vid` MJPEG to browsers |
+| `src/webrtc.js` | forwards the WebRTC handshake (WHEP) to MediaMTX |
+| `src/camera.js` | `rpicam-vid` MJPEG to browsers (`camera.mode` `"mjpeg"`) |
 | `src/telemetryLog.js` | CSV recording |
 | `src/system.js` | Pi stats, shutdown/reboot |
 | `src/gamepad.js` | PS4/PS5 controller, read from `/dev/input` (no native modules) |

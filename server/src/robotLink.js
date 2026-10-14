@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import path from 'node:path';
 import { SerialPort, ReadlineParser } from 'serialport';
+import { withChecksum } from './protocol.js';
 
 const RETRY_MS = 2000;
 // Opening the port resets the Arduino; it then calibrates the gyro before it
@@ -94,7 +95,7 @@ export class RobotLink extends EventEmitter {
     this.child = child;
     readline.createInterface({ input: child.stdout }).on('line', (line) => this.emit('line', line));
     child.on('error', (err) => {
-      this.log.error(`sim: ${err.message}. Build it with bailey_FW/test/run_tests.sh`);
+      this.log.error(`sim: ${err.message}. Build it with bailey_FW/test/build.sh`);
       this.setStatus(false, err.message);
     });
     child.on('exit', (code) => {
@@ -108,8 +109,9 @@ export class RobotLink extends EventEmitter {
 
   write(line) {
     if (/[\r\n]/.test(line)) throw new Error('one line at a time');
-    if (this.port) this.port.write(line + '\n');
-    else if (this.child) this.child.stdin.write(line + '\n');
+    const framed = withChecksum(line) + '\n';
+    if (this.port) this.port.write(framed);
+    else if (this.child) this.child.stdin.write(framed);
     else return false;
     return true;
   }

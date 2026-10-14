@@ -23,7 +23,8 @@ const bailey = createApp(config, { log });
 const port = await bailey.start();
 const urls = addresses().map((a) => `http://${a.address}:${port}`);
 log.info(`Bailey server listening on ${urls.join(', ') || `port ${port}`}`);
-log.info(`robot: ${config.serial.port === 'sim' ? 'simulator' : config.serial.port}, camera: ${config.camera.enabled ? config.camera.command : 'off'}`);
+const video = !config.camera.enabled ? 'off' : config.camera.mode === 'mjpeg' ? `MJPEG (${config.camera.command})` : `WebRTC via MediaMTX (${config.camera.mediamtx})`;
+log.info(`robot: ${config.serial.port === 'sim' ? 'simulator' : config.serial.port}, video: ${video}`);
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {

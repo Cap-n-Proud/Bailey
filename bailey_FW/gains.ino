@@ -1,16 +1,21 @@
 // Controller gains from the robot's physical model.
 //
 // With steppers the wheels follow the commanded speed exactly, so the robot is
-// an inverted pendulum on a speed-controlled cart:
+// an inverted pendulum driven by the wheels' acceleration a:
 //
-//   pitch'' = (g * pitch - wheel acceleration) / L
+//   pitch'' = (g * pitch - kappa * a) / L
 //
-// where L is the effective pendulum length, (I + m l^2) / (m l). Two robots
-// that differ only in L behave the same with time scaled by sqrt(L / g), so a
-// set of gains tuned for one L carries over exactly to any other L:
+// with L the effective pendulum length and kappa how hard the wheels'
+// acceleration tips the body (lqr.ino). Two robots that differ only in L
+// behave the same with time scaled by sqrt(L / g), so a set of gains tuned for
+// one L carries over exactly to any other L:
 //
 //   angle Kp ~ sqrt(g L)   Ki ~ g   Kd ~ L
 //   speed Kp ~ 1 / sqrt(g L)        Ki ~ 1 / L
+//
+// kappa is divided out: the angle loop's gains are divided by kappa (the same
+// pitch response) and the speed loop's multiplied by it (the wheels then move
+// 1/kappa as much for the same pitch motion).
 //
 // The reference gains below were tuned in the simulator (test/) for L = 0.2 m
 // and checked over L = 0.12 - 0.3 m, IMU offsets and noise, so they are also
@@ -23,17 +28,13 @@
 #define REF_ANGLE_KI 5.076f     // (m/s^2) per rad
 #define REF_ANGLE_KD 0.550f     // m per rad
 #define REF_SPEED_KP 0.3546f    // rad per (m/s)
-#define REF_SPEED_KI 0.04728f   // rad per m
+#define REF_SPEED_KI 0.09456f   // rad per m (doubled for the compensated IMU filter, imu.ino)
 #define AGGRESSIVE_FACTOR 1.3f
 
 // Ground speed at 100 % motor command.
 float fullSpeedMps() {
   float turnsPerSec;
-#if MOTOR_TYPE == MOTOR_STEPPER
   turnsPerSec = cfg.stepperMaxSpeed / cfg.stepsPerRev;
-#else
-  turnsPerSec = cfg.encoderCountsPerSecFull / cfg.encoderCountsPerRev;
-#endif
   return turnsPerSec * (float)M_PI * cfg.wheelDiameter / 1000.0f;
 }
 
@@ -43,7 +44,8 @@ void applyGainsForLength(float length) {
   float vFull = fullSpeedMps();
 
   // (m/s per rad) -> (% per deg)
-  float toPercent = 100.0f / vFull / 57.29578f;
+  float k = cfg.pendulumCoupling > 0.1f ? cfg.pendulumCoupling : 1;
+  float toPercent = 100.0f / vFull / 57.29578f / k;
   cfg.anglePIDConKp = REF_ANGLE_KP * r * toPercent;
   cfg.anglePIDConKi = REF_ANGLE_KI * toPercent;
   cfg.anglePIDConKd = REF_ANGLE_KD * s * toPercent;
@@ -52,7 +54,7 @@ void applyGainsForLength(float length) {
   cfg.anglePIDAggKd = cfg.anglePIDConKd * AGGRESSIVE_FACTOR;
 
   // (rad per m/s) -> (deg per %)
-  float toDegPerPercent = 57.29578f * vFull / 100.0f;
+  float toDegPerPercent = 57.29578f * vFull / 100.0f * k;
   cfg.speedPIDKp = REF_SPEED_KP / r * toDegPerPercent;
   cfg.speedPIDKi = REF_SPEED_KI / s * toDegPerPercent;
   cfg.speedPIDKd = 0;

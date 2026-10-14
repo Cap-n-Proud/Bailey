@@ -14,7 +14,7 @@ import { Gamepad, ABS, BTN } from '../src/gamepad.js';
 import { FakeGamepad } from './fixtures/fake-gamepad.js';
 
 const SIM_DIR = path.resolve(SERVER_DIR, '../bailey_FW/test');
-const SIM = path.join(SIM_DIR, 'sim_stepper');
+const SIM = path.join(SIM_DIR, 'sim');
 const quiet = { debug() {}, info() {}, warn() {}, error: console.error };
 
 let bailey, url, logDir, pad, skip = false;
@@ -23,7 +23,7 @@ const clients = [];
 before(async () => {
   try {
     // Always rebuild so the test runs the current firmware.
-    execFileSync('g++', ['-std=c++17', '-O2', '-Istubs', '-DMOTOR_TYPE=2', '-o', 'sim_stepper', 'sim.cpp'], { cwd: SIM_DIR });
+    execFileSync('sh', ['build.sh'], { cwd: SIM_DIR });
   } catch (err) {
     skip = `can't build the simulator: ${err.message}`;
     return;
@@ -75,13 +75,13 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   const ui = client();
   await waitFor(() => ui.latest.snapshot, 3000, 'snapshot');
   await waitFor(() => ui.latest.telemetry?.state === 'OFF' && ui.latest.gains && ui.latest.lqr, 6000, 'telemetry, gains and LQR gain');
-  assert.equal(ui.latest.gains.gains.anglePIDConKp, 12);
+  assert.equal(ui.latest.gains.gains.anglePIDConKp, 10.89);   // defaults: L 0.3 m, kappa 1.35
   assert.equal(ui.latest.gains.gains.controller, 1);              // steppers balance with LQR
-  assert.equal(ui.latest.lqr.length, 0.2);
+  assert.equal(ui.latest.lqr.length, 0.3);
   await waitFor(() => ui.latest.snapshot && (ui.latest.firmware || ui.latest.snapshot.robot.firmware), 3000, 'firmware info');
   const fw = ui.latest.firmware || ui.latest.snapshot.robot.firmware;
-  assert.equal(fw.Board, 'Mega2560');            // the simulator builds the Mega configuration
-  assert.equal(fw.ControlPeriodUs, '5000');
+  assert.equal(fw.Board, 'ESP32-S3');
+  assert.equal(fw.ControlPeriodUs, '2000');
   assert.ok(ui.latest.lqr.gain[2] < -50, 'LQR pitch gain');
 
   assert.equal((await ask(ui, 'command', { name: 'Motors', value: 1 })).ok, true);
@@ -152,7 +152,7 @@ test('gains, console, recording and HTTP endpoints', async (t) => {
 
   const status = await (await fetch(`${url}/api/status`)).json();
   assert.equal(status.robot.link.connected, true);
-  assert.equal((await fetch(`${url}/stream.mjpg`)).status, 503);   // camera disabled
+  assert.equal((await fetch(`${url}/stream.mjpg`)).status, 404);   // video is WebRTC (default camera.mode)
   assert.match(await (await fetch(`${url}/`)).text(), /<title>Bailey<\/title>/);
   ui.disconnect();
 });
@@ -167,7 +167,9 @@ test('autotune measures the simulated robot', async (t) => {
   const result = await waitFor(() => ui.latest.autotune?.phase === 'IDLE' && ui.latest.autotune.result, 45000, 'autotune result');
   assert.deepEqual(phases.slice(0, 3), ['BASELINE', 'MEASURE', 'VERIFY']);
   assert.equal(result.accepted, true);
-  assert.ok(Math.abs(result.length - 0.2) < 0.03, `L = ${result.length} (true 0.20)`);
+  // The simulated robot is Bailey: L = 0.31 m, kappa = 1.38 (bailey_FW/test/sim.cpp, Plant).
+  assert.ok(Math.abs(result.length - 0.31) < 0.04, `L = ${result.length} (true 0.31)`);   // +/- 13 %
+  assert.ok(Math.abs(result.coupling - 1.38) < 0.2, `kappa = ${result.coupling} (true 1.38)`);
   await waitFor(() => Math.abs(ui.latest.gains?.gains.calibratedZeroAngle - result.zero) < 0.02, 3000, 'zero applied');
   await waitFor(() => Math.abs(ui.latest.lqr?.length - result.length) < 0.002, 3000, 'LQR gain rescaled to the measured length');
 

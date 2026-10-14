@@ -9,6 +9,10 @@
 //   E, ...    error
 // Pi -> robot: "SCMD <name> <value>" and "READ <what>".
 //
+// Every line, both ways, ends in "*HH": a CRC-8 (polynomial 0x07) of the text
+// before the '*', in hex. It catches lines cut short or run together. Lines
+// without one are accepted (older firmware, typing by hand).
+//
 // This module has no I/O, so it can be unit tested.
 
 export const ROBOT_STATES = ['OFF', 'WAIT', 'BAL', 'FALL'];
@@ -28,7 +32,28 @@ export const PID_SCALE = {
   calibratedZeroAngle: 100,
 };
 
-const MAX_LINE = 63;   // firmware line buffer is 64 bytes
+const MAX_LINE = 72;   // firmware line buffer is 80 bytes, including the checksum
+
+export function crc8(text) {
+  let crc = 0;
+  for (let i = 0; i < text.length; i++) {
+    crc ^= text.charCodeAt(i) & 0xff;
+    for (let b = 0; b < 8; b++) crc = crc & 0x80 ? ((crc << 1) ^ 0x07) & 0xff : (crc << 1) & 0xff;
+  }
+  return crc;
+}
+
+export function withChecksum(line) {
+  return `${line}*${crc8(line).toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+// { line, ok }: the line without its checksum, and whether it matched
+// (true when there was none).
+export function checkLine(raw) {
+  const m = /^(.*)\*([0-9A-Fa-f]{2})$/.exec(raw);
+  if (!m) return { line: raw, ok: true };
+  return { line: m[1], ok: crc8(m[1]) === parseInt(m[2], 16) };
+}
 
 export function tagOf(line) {
   return line.split(',')[0].split(' ')[0];
@@ -47,7 +72,9 @@ export class RobotProtocol {
 
   // Returns { type, ... } describing the line.
   parse(rawLine) {
-    const line = rawLine.replace(/[\r\n]+$/, '').trim();
+    const checked = checkLine(rawLine.replace(/[\r\n]+$/, '').trim());
+    const line = checked.line.trim();
+    if (!checked.ok) return { type: 'corrupt', line: rawLine };
     if (!line) return null;
     const tag = tagOf(line);
     const fields = line.split(',');
@@ -89,11 +116,12 @@ export class RobotProtocol {
 
       case 'AT':
         if (fields[1] === 'RESULT') {
-          const [accepted, L, L1, L2, zero, r2, before, after] = fields.slice(2).map(Number);
+          // AT,RESULT,<accepted>,<L>,<kappa>,<zero>,<R²>,<wobble before>,<after>
+          const [accepted, L, coupling, zero, r2, before, after] = fields.slice(2).map(Number);
           return {
             type: 'autotune',
             phase: 'RESULT',
-            result: { accepted: accepted === 1, length: L, lengthFromGravity: L1, lengthFromAccel: L2, zero, r2, before, after },
+            result: { accepted: accepted === 1, length: L, coupling, zero, r2, before, after },
           };
         }
         return { type: 'autotune', phase: fields[1] };

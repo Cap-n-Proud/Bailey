@@ -44,3 +44,6 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# MuJoCo writes this when a simulation goes unstable
+MUJOCO_LOG.TXT

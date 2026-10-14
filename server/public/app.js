@@ -67,63 +67,100 @@ function renderState() {
   $('joystick').classList.toggle('disabled', s !== 'BAL');
 }
 
-// ---------- telemetry & charts ----------
-const HISTORY_S = 20;
-const history = { pitch: [], speed: [] };
+// ---------- telemetry & charts (uPlot) ----------
+const MAX_HISTORY_S = 300;
+let historyS = 20;
+// Columns for uPlot: time (s), pitch, balance angle, wheel speed.
+const hist = { t: [], pitch: [], bal: [], speed: [] };
+let following = true;     // false while the user looks at a zoomed-in part
 
 function css(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function drawChart(canvas, points, fixedRange) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth, h = canvas.clientHeight || 110;
-  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-  }
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-  const now = performance.now() / 1000;
-  let lo = -fixedRange, hi = fixedRange;
-  for (const p of points) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
-  const pad = 18;
-  const y = (v) => pad / 2 + (h - pad) * (1 - (v - lo) / (hi - lo));
-  const x = (t) => 32 + (w - 36) * (1 - (now - t) / HISTORY_S);
-
-  ctx.font = '11px system-ui';
-  ctx.fillStyle = css('--text-3');
-  ctx.strokeStyle = css('--grid');
-  ctx.lineWidth = 1;
-  for (const v of [lo, 0, hi]) {
-    ctx.beginPath();
-    ctx.moveTo(32, y(v));
-    ctx.lineTo(w, y(v));
-    ctx.stroke();
-    ctx.fillText(v.toFixed(Math.abs(hi - lo) < 10 ? 1 : 0), 0, y(v) + 4);
-  }
-  ctx.strokeStyle = css('--series');
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  points.forEach((p, i) => (i ? ctx.lineTo(x(p.t), y(p.v)) : ctx.moveTo(x(p.t), y(p.v))));
-  ctx.stroke();
+function chartOptions(el, series) {
+  const axis = { stroke: css('--text-3'), grid: { stroke: css('--grid'), width: 1 }, ticks: { stroke: css('--grid'), width: 1 } };
+  return {
+    width: el.clientWidth || 300,
+    height: 150,
+    cursor: { drag: { x: true, y: false } },
+    scales: { x: { time: true } },
+    axes: [{ ...axis }, { ...axis, size: 44 }],
+    series: [{}, ...series],
+    legend: { live: true },
+    hooks: {
+      // The user dragged to zoom: stop scrolling until "Back to live".
+      setSelect: [(u) => {
+        if (u.select.width > 0) {
+          following = false;
+          $('liveBtn').hidden = false;
+        }
+      }],
+    },
+  };
 }
+
+let pitchPlot, speedPlot;
+function makeCharts() {
+  pitchPlot?.destroy();
+  speedPlot?.destroy();
+  const pEl = $('pitchChart'), sEl = $('speedChart');
+  pitchPlot = new uPlot(chartOptions(pEl, [
+    { label: 'pitch', stroke: css('--series'), width: 2, value: (u, v) => (v == null ? '–' : `${v.toFixed(2)}°`) },
+    { label: 'balance angle', stroke: css('--good'), width: 1.5, value: (u, v) => (v == null ? '–' : `${v.toFixed(2)}°`) },
+  ]), [hist.t, hist.pitch, hist.bal], pEl);
+  speedPlot = new uPlot(chartOptions(sEl, [
+    { label: 'speed', stroke: css('--series'), width: 2, value: (u, v) => (v == null ? '–' : `${v.toFixed(1)} %`) },
+  ]), [hist.t, hist.speed], sEl);
+  updateCharts();
+}
+
+function updateCharts() {
+  if (!pitchPlot || !following) return;
+  pitchPlot.setData([hist.t, hist.pitch, hist.bal], false);
+  speedPlot.setData([hist.t, hist.speed], false);
+  const end = hist.t.length ? hist.t[hist.t.length - 1] : Date.now() / 1000;
+  for (const p of [pitchPlot, speedPlot]) p.setScale('x', { min: end - historyS, max: end });
+}
+
+new ResizeObserver(() => {
+  for (const [p, el] of [[pitchPlot, $('pitchChart')], [speedPlot, $('speedChart')]]) p?.setSize({ width: el.clientWidth, height: 150 });
+}).observe($('pitchChart'));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', makeCharts);
+
+for (const b of document.querySelectorAll('[data-history]')) {
+  b.onclick = () => {
+    historyS = Number(b.dataset.history);
+    document.querySelectorAll('[data-history]').forEach((o) => o.classList.toggle('on', o === b));
+    following = true;
+    $('liveBtn').hidden = true;
+    updateCharts();
+  };
+}
+// Double-click (uPlot's "zoom out") also goes back to live.
+for (const id of ['pitchChart', 'speedChart']) $(id).addEventListener('dblclick', () => $('liveBtn').click());
+$('liveBtn').onclick = () => {
+  following = true;
+  $('liveBtn').hidden = true;
+  updateCharts();
+};
 
 function onTelemetry(t) {
   robot.telemetry = t;
-  const now = performance.now() / 1000;
+  const now = Date.now() / 1000;
   const speed = (t.leftMotorSpeed + t.rightMotorSpeed) / 2;
-  history.pitch.push({ t: now, v: t.pitch });
-  history.speed.push({ t: now, v: speed });
-  for (const k in history) while (history[k].length && history[k][0].t < now - HISTORY_S) history[k].shift();
+  hist.t.push(now);
+  hist.pitch.push(t.pitch);
+  hist.bal.push(typeof t.balAngle === 'number' ? t.balAngle : null);
+  hist.speed.push(speed);
+  while (hist.t.length && hist.t[0] < now - MAX_HISTORY_S) for (const k in hist) hist[k].shift();
+  updateCharts();
 
   $('pitch').textContent = `${fmt(t.pitch, 2)}°`;
   $('speed').textContent = `${fmt(speed)} %`;
   $('loopTime').textContent = `${t.LoopT} µs`;
-  // Budget: the firmware's control period (5000 µs on the Mega, 2000 µs on the ESP32-S3).
-  const budget = Number(robot.firmware?.ControlPeriodUs) || 5000;
+  // Budget: the firmware's control period (2000 µs).
+  const budget = Number(robot.firmware?.ControlPeriodUs) || 2000;
   $('loopTime').style.color = t.LoopT > budget ? css('--bad') : '';
   $('loopTime').title = `Worst control loop time since the last telemetry; must stay under ${budget} µs`;
   $('wobble').textContent = fmt(t.dISTE, 3);
@@ -134,12 +171,7 @@ function onTelemetry(t) {
   renderState();
 }
 
-function animate() {
-  drawChart($('pitchChart'), history.pitch, 2);
-  drawChart($('speedChart'), history.speed, 10);
-  requestAnimationFrame(animate);
-}
-requestAnimationFrame(animate);
+makeCharts();
 
 // ---------- firmware ----------
 function renderFirmware() {
@@ -151,12 +183,9 @@ function renderFirmware() {
 // ---------- controller ----------
 function renderController() {
   const c = robot.gains?.controller;
-  const isStepper = robot.gains?.OPT === 2;
   $('ctrlLqr').classList.toggle('on', c === 1);
   $('ctrlMpc').classList.toggle('on', c === 2);
   $('ctrlPid').classList.toggle('on', c === 0);
-  $('ctrlLqr').disabled = !isStepper;
-  $('ctrlMpc').disabled = !isStepper || robot.firmware?.Board !== 'ESP32-S3';
   const l = robot.lqr;
   $('lqrInfo').textContent = (c === 1 || c === 2) && l
     ? `K = ${l.gain.map((k) => k.toFixed(1)).join(', ')} for L = ${(l.length * 100).toFixed(1)} cm`
@@ -208,8 +237,8 @@ function renderAutotune() {
   } else if (a.result) {
     const r = a.result;
     $('autotuneText').textContent = r.accepted
-      ? `Done: pendulum length ${(r.length * 100).toFixed(1)} cm, zero ${r.zero.toFixed(2)}°. Wobble ${r.before} → ${r.after}. Save to keep it.`
-      : `Rejected: the measurement wasn't consistent (${(r.lengthFromGravity * 100).toFixed(0)} vs ${(r.lengthFromAccel * 100).toFixed(0)} cm). Nothing changed.`;
+      ? `Done: pendulum length ${(r.length * 100).toFixed(1)} cm, wheel coupling ${r.coupling.toFixed(2)}, zero ${r.zero.toFixed(2)}°. Wobble ${r.before} → ${r.after}. Save to keep it.`
+      : `Rejected: the measurement didn't make physical sense (wheel coupling ${r.coupling.toFixed(2)}, expected 1-2.5; slipping wheels?). Nothing changed.`;
     $('lengthInput').value = r.accepted ? Math.round(r.length * 1000) : $('lengthInput').value;
   }
   renderState();
@@ -244,19 +273,80 @@ $('lengthForm').onsubmit = (e) => {
 for (const b of document.querySelectorAll('[data-read]')) b.onclick = () => emit('read', b.dataset.read);
 
 // ---------- video ----------
+// "webrtc": MediaMTX streams the camera, the handshake (WHEP) goes through the
+// server at mediamtx/cam/whep. "mjpeg": the server streams stream.mjpg itself.
 let videoOn = false;
+let videoMode = 'webrtc';
+let pc = null, whepSession = null;
+
+async function startWebRTC() {
+  pc = new RTCPeerConnection();
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.ontrack = (e) => { $('videoEl').srcObject = e.streams[0]; };
+  pc.onconnectionstatechange = () => {
+    if (pc && pc.connectionState === 'failed') { setVideo(false); toast('Video connection lost'); }
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  // Send the offer with its ICE candidates in it (no trickling): wait up to 2 s for them.
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    const done = () => { if (pc?.iceGatheringState === 'complete') resolve(); };
+    pc.addEventListener('icegatheringstatechange', done);
+    setTimeout(resolve, 2000);
+  });
+  const res = await fetch('mediamtx/cam/whep', {
+    method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription.sdp,
+  });
+  if (res.status !== 201) throw new Error(res.status === 502 ? 'video server (MediaMTX) not running' : `video server: HTTP ${res.status}`);
+  whepSession = res.headers.get('Location');
+  await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+}
+
+function stopWebRTC() {
+  if (whepSession) fetch(whepSession, { method: 'DELETE' }).catch(() => {});
+  whepSession = null;
+  pc?.close();
+  pc = null;
+  $('videoEl').srcObject = null;
+}
+
 function setVideo(on) {
   videoOn = on;
-  $('video').classList.toggle('on', on);
-  $('videoImg').src = on ? `stream.mjpg?t=${Date.now()}` : '';
+  const v = $('video');
+  v.classList.toggle('on', on);
+  v.classList.toggle('webrtc', videoMode === 'webrtc');
+  v.classList.toggle('mjpeg', videoMode === 'mjpeg');
   $('videoBtn').textContent = on ? 'Video off' : 'Video on';
+  if (videoMode === 'mjpeg') {
+    $('videoImg').src = on ? `stream.mjpg?t=${Date.now()}` : '';
+  } else if (on) {
+    startWebRTC().catch((err) => {
+      stopWebRTC();
+      if (videoOn) { setVideo(false); toast(`No video: ${err.message}`); }
+    });
+  } else {
+    stopWebRTC();
+  }
 }
 $('videoBtn').onclick = () => setVideo(!videoOn);
 $('videoImg').onerror = () => {
   if (videoOn) { setVideo(false); toast('No video: ' + ($('cameraStatus').textContent || 'camera unavailable')); }
 };
+$('snapshotBtn').onclick = () => {
+  if (videoMode === 'mjpeg') { window.open(`snapshot.jpg?t=${Date.now()}`, '_blank', 'noopener'); return; }
+  // WebRTC: grab the frame on screen.
+  const v = $('videoEl');
+  if (!videoOn || !v.videoWidth) { toast('Turn the video on first'); return; }
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  c.toBlob((blob) => window.open(URL.createObjectURL(blob), '_blank', 'noopener'), 'image/jpeg', 0.9);
+};
 function renderCamera(c) {
-  $('cameraStatus').textContent = c.enabled === false ? 'camera disabled in config' : c.error || (c.status === 'running' ? '' : c.status);
+  if (c.mode) videoMode = c.mode;
+  $('cameraStatus').textContent = c.enabled === false ? 'camera disabled in config'
+    : videoMode === 'webrtc' ? 'WebRTC' : c.error || (c.status === 'running' ? '' : c.status);
 }
 
 // ---------- driving ----------
@@ -426,7 +516,7 @@ socket.on('event', (e) => {
   if (e.kind === 'error' || e.kind === 'autotune' || e.kind === 'test') toast(e.text, 4000);
 });
 socket.on('console', addConsole);
-socket.on('camera', (c) => renderCamera({ ...c, enabled: cameraEnabled }));
+socket.on('camera', (c) => renderCamera({ ...c, enabled: cameraEnabled, mode: videoMode }));
 socket.on('system', renderSystem);
 socket.on('logging', renderLogging);
 socket.on('disconnect', () => {

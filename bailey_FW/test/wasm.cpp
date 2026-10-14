@@ -51,7 +51,7 @@ EXPORT void sim_run(double seconds) {
       fallenFor += 0.01;
       if (fallenFor > 2) {
         plant.held = true;
-        plant.vl = plant.vr = 0;
+        plant.vl = plant.vr = plant.ul = plant.ur = 0;
         double from = plant.theta;
         for (int i = 1; i <= 50; i++) {
           plant.theta = from * (1 - i / 50.0);
@@ -88,7 +88,8 @@ EXPORT const char *sim_output() {
 }
 
 enum { G_THETA, G_OMEGA, G_X, G_SPEED, G_PITCH, G_STATE, G_CONTROLLER, G_BALANCE, G_HELD, G_LENGTH,
-       G_TIME, G_HEADING, G_POSX, G_POSY, G_WHEEL, G_DISTURBANCE, G_THROTTLE, G_STEER, G_ZERO, G_LOOPUS };
+       G_TIME, G_HEADING, G_POSX, G_POSY, G_WHEEL, G_DISTURBANCE, G_THROTTLE, G_STEER, G_ZERO, G_LOOPUS,
+       G_COM_HEIGHT, G_WHEEL_RADIUS, G_COUPLING, G_FW_COUPLING };
 
 EXPORT double sim_get(int what) {
   switch (what) {
@@ -101,7 +102,7 @@ EXPORT double sim_get(int what) {
     case G_CONTROLLER: return cfg.controller;
     case G_BALANCE: return dobAngle * 180 / M_PI;
     case G_HELD: return plant.held;
-    case G_LENGTH: return plant.effLength;
+    case G_LENGTH: return plant.fallLength();
     case G_TIME: return simMicros / 1e6;
     case G_HEADING: return heading * 180 / M_PI;
     case G_POSX: return posX;
@@ -112,6 +113,10 @@ EXPORT double sim_get(int what) {
     case G_STEER: return steerCmd;
     case G_ZERO: return cfg.calibratedZeroAngle;
     case G_LOOPUS: return CONTROL_PERIOD_US;
+    case G_COM_HEIGHT: return plant.comHeight;
+    case G_WHEEL_RADIUS: return plant.wheelRadius;
+    case G_COUPLING: return plant.coupling();
+    case G_FW_COUPLING: return cfg.pendulumCoupling;
   }
   return 0;
 }
@@ -121,15 +126,15 @@ enum { S_PUSH, S_LOAD, S_LENGTH, S_HELD, S_NOISE, S_SLIP, S_AUTOPICKUP, S_PICKUP
 EXPORT void sim_set(int what, double v) {
   switch (what) {
     case S_PUSH: if (!plant.held) plant.omega += v; break;                 // rad/s kick
-    case S_LOAD: plant.disturbance = -9.81 * sin(v * M_PI / 180) / plant.effLength; break;  // centre of mass moved v deg
-    case S_LENGTH: plant.effLength = v; break;
+    case S_LOAD: plant.disturbance = -plant.fallRate() * sin(v * M_PI / 180); break;  // centre of mass moved v deg
+    case S_LENGTH: setRobotLength(v); break;
     case S_HELD: plant.held = v != 0; if (plant.held) { plant.theta = 0; plant.omega = 0; } break;
     case S_NOISE: plant.noiseDeg = v; break;
     case S_SLIP: plant.slip = v; break;
     case S_AUTOPICKUP: autoPickup = v != 0; break;
     case S_PICKUP:
       plant.held = true;
-      plant.vl = plant.vr = 0;
+      plant.vl = plant.vr = plant.ul = plant.ur = 0;
       plant.theta = plant.omega = 0;
       fallenFor = 0;
       break;

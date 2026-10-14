@@ -5,10 +5,12 @@
   "serial": {
     "port": "/dev/ttyACM0",
     "baudRate": 115200,
-    "simCommand": "../bailey_FW/test/sim_stepper live"
+    "simCommand": "../bailey_FW/test/sim live"
   },
   "camera": {
     "enabled": true,
+    "mode": "webrtc",
+    "mediamtx": "http://127.0.0.1:8889",
     "command": "rpicam-vid",
     "width": 640,
     "height": 480,

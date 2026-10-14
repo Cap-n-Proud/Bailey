@@ -1,15 +1,18 @@
 // PC simulation of the Bailey firmware.
 //
-// Compiles the real firmware (.ino files) against the stub Arduino API in
-// stubs/ and runs it against a simple model of a two-wheeled inverted pendulum:
-// DC gear motors with encoders (default) or steppers (-DMOTOR_TYPE=2).
+// Compiles the real firmware (.ino files, with Eigen and TinyMPC) against the
+// stub Arduino API in stubs/ and runs it against a simple model of a
+// two-wheeled inverted pendulum on steppers.
 //
-//   ./run_tests.sh            builds both variants and runs every scenario
-//   ./sim_dc <scenario>       runs one scenario, prints a summary, exits 1 on failure
+//   ./run_tests.sh            builds the simulator and runs every scenario
+//   ./sim <scenario>          runs one scenario, prints a summary, exits 1 on failure
+#define ARDUINO_ARCH_ESP32 1     // the firmware's only board
+#define BAILEY_SIMULATOR 1       // mpc.ino: solve in line instead of on the second core
 #include "Arduino.h"
-#include "EEPROM.h"
+#include "Preferences.h"
+#include "esp_task_wdt.h"
+#include "esp_system.h"
 #include "Wire.h"
-#include "Encoder.h"
 #include "MPU6050.h"
 #include "FastAccelStepper.h"
 #include <algorithm>
@@ -25,10 +28,11 @@
 uint64_t simMicros = 0;
 int simPinValue[64];
 int simPwm[64];
-long simEncoder[64];
 int16_t simAccel[3], simGyro[3];
 SimSerial Serial;
-SimEEPROM EEPROM;
+SimNvs simNvs;
+SimWatchdog simWatchdog;
+esp_reset_reason_t simResetReason = ESP_RST_POWERON;
 SimWire Wire;
 
 #include "../bailey_FW.ino"
@@ -42,16 +46,29 @@ SimWire Wire;
 #include "../settings.ino"
 
 // ---------------- Plant model ----------------
+// A rigid body on two wheels; each stepper turns its wheel relative to the
+// body (its housing is bolted to it), and the wheels roll without slipping.
+// Equations of motion from Lagrange with the wheel angle relative to the body
+// prescribed, checked against MuJoCo (test/mujoco_check.py: agrees within
+// 0.02 deg). Linearised they read pitch'' = (g pitch - kappa a) / L, with
+// a the wheels' acceleration relative to the body (what the firmware commands);
+// L and kappa (1 for a cart-pole; ~1.4 for Bailey) are what the autotuner
+// measures, see fallLength() and coupling().
+struct Plant;
+#ifdef SIM_MUJOCO
+static void mujocoStep(Plant &p, double dt, double wl, double wr);
+#endif
+
 struct Plant {
-  // Geometry: 94 mm wheels, centre of mass ~15 cm above the axle.
+  static inline int count = 0;
+  int id = ++count;             // a new Plant() means a new robot (the MuJoCo model is rebuilt)
+  // Geometry: 94 mm wheels, centre of mass 15 cm above the axle.
   double wheelRadius = 0.047;
-  double effLength = 0.20;      // (I + m l^2) / (m l) of the body
+  double bodyMass = 1.5;        // kg
+  double wheelMass = 0.2;       // kg, both wheels (uniform discs)
+  double comHeight = 0.15;      // m, centre of mass above the axle
+  double bodyLength = 0.20;     // (I + m l^2) / (m l) of the body alone, about the axle
   double g = 9.81;
-  // Pololu 100:1, ~100 rpm at 12 V
-  double vMax = 100.0 / 60.0 * 2 * M_PI * 0.047;
-  double motorTau = 0.08;       // s, speed response of the gear motor
-  int stictionPwm = 50;         // PWM below which the motor does not move
-  double countsPerRev = 6400;
   double stepsPerRev = 1600;    // 200-step motor, 1/8 microstepping
   double mountOffsetDeg = 1.5;  // IMU is tilted this much when the robot is truly upright
   double noiseDeg = 0.05;       // scales accelerometer and gyro noise
@@ -63,9 +80,9 @@ struct Plant {
   double lagOmega = 0, lagFy = 0, lagFz = 9.81;
 
   double theta = 0, omega = 0;  // rad, + = leaning forward
+  double ul = 0, ur = 0;        // wheel surface speed relative to the body (what the steppers set), m/s
   double vl = 0, vr = 0;        // wheel ground speed m/s
   double x = 0;
-  double encL = 0, encR = 0;
   bool held = true;
   double alpha = 0;
   double pickupRate = 0;        // rad/s while someone is turning the robot by hand
@@ -73,59 +90,81 @@ struct Plant {
   std::mt19937 rng{42};
   std::normal_distribution<double> noise{0, 1};
 
-  double driveAccel(double v, int pwmPin, int in1, int in2) {
-#if MOTOR_TYPE == MOTOR_DC
-    int pwm = simPwm[pwmPin];
-    int dir = (simPinValue[in1] && !simPinValue[in2]) ? 1 : (simPinValue[in2] && !simPinValue[in1]) ? -1 : 0;
-    if (pwm == 0 || dir == 0) return -v / 0.5;                  // coasting
-    double u = dir * std::max(0, pwm - stictionPwm) / double(255 - stictionPwm);
-    return (u * vMax - v) / motorTau;
-#else
-    (void)v; (void)pwmPin; (void)in1; (void)in2;
-    return 0;
-#endif
+  // Lagrange terms (r: wheel radius, mb: body, mw: wheels, l: centre of mass):
+  //   M = (mw + mb) r^2 + Iw,  J = mb l bodyLength (body inertia about the axle)
+  //   pitch'' (J + M + 2 mb r l cos) = mb g l sin + mb r l sin pitch'^2 - (a / r) (M + mb r l cos)
+  double wheelM() const { return (wheelMass + bodyMass) * wheelRadius * wheelRadius + 0.5 * wheelMass * wheelRadius * wheelRadius; }
+  double bodyJ() const { return bodyMass * comHeight * bodyLength; }
+  double fallRate() const {     // g / L of the linearised model, 1/s^2
+    return bodyMass * g * comHeight / (bodyJ() + wheelM() + 2 * bodyMass * wheelRadius * comHeight);
+  }
+  double fallLength() const { return g / fallRate(); }   // L
+  double coupling() const {     // kappa
+    double p3 = (wheelM() + bodyMass * wheelRadius * comHeight) / wheelRadius /
+                (bodyJ() + wheelM() + 2 * bodyMass * wheelRadius * comHeight);
+    return p3 * fallLength();
+  }
+  // A robot with the given L, same proportions (centre of mass at 3/4 of
+  // bodyLength). Big robots get a taller body on the same wheels; below
+  // 0.25 m the whole robot, wheels included, is scaled down (94 mm wheels
+  // can't make a shorter pendulum). Returns false if the wheel size changed.
+  bool setLength(double L) {
+    const double rDefault = 0.047, Lmin = 0.25;
+    wheelRadius = rDefault;
+    double scale = 1;
+    if (L < Lmin) { scale = L / Lmin; L = Lmin; }
+    double lo = 0.06, hi = 2;
+    for (int i = 0; i < 60; i++) {
+      bodyLength = (lo + hi) / 2;
+      comHeight = 0.75 * bodyLength;
+      (fallLength() < L ? lo : hi) = bodyLength;
+    }
+    wheelRadius *= scale;
+    bodyLength *= scale;
+    comHeight *= scale;
+    return scale == 1;
   }
 
   void step(double dt) {
-    double al, ar;
-#if MOTOR_TYPE == MOTOR_DC
-    al = driveAccel(vl, PIN_LEFT_PWM, PIN_LEFT_IN1, PIN_LEFT_IN2);
-    ar = driveAccel(vr, PIN_RIGHT_PWM, PIN_RIGHT_IN1, PIN_RIGHT_IN2);
-#else
     // Steppers follow the library's ramped step rate exactly (no stalling modelled).
     double k = 2 * M_PI * wheelRadius / stepsPerRev;
     stepperLeft->advance(dt);
     stepperRight->advance(dt);
-    al = (slip * stepperLeft->speed * k - vl) / dt;
-    ar = (slip * stepperRight->speed * k - vr) / dt;
-#endif
+    double al = (stepperLeft->speed * k - ul) / dt, ar = (stepperRight->speed * k - ur) / dt;
+    ul += al * dt;
+    ur += ar * dt;
+    double v0 = (vl + vr) / 2;
+#ifdef SIM_MUJOCO
+    (void)al; (void)ar;
+    mujocoStep(*this, dt, stepperLeft->speed * 2 * M_PI / stepsPerRev, stepperRight->speed * 2 * M_PI / stepsPerRev);
+#else
     if (held) {
       // Held in the air / on a stand: the body doesn't move, the wheels spin freely.
       omega = 0;
-      vl += al * dt;
-      vr += ar * dt;
+      alpha = 0;
+      vl = ul;
+      vr = ur;
     } else {
-      double a = (al + ar) / 2;
-      alpha = (g * sin(theta) - a * cos(theta)) / effLength + disturbance;
+      // slip < 1: the wheels grip only partly (a crude model: their push on the
+      // body and the ground motion are both scaled down).
+      double a = slip * (al + ar) / 2, r = wheelRadius, mbrl = bodyMass * r * comHeight;
+      double M = wheelM(), c = cos(theta), s = sin(theta);
+      alpha = (bodyMass * g * comHeight * s + mbrl * s * omega * omega - a / r * (M + mbrl * c)) /
+              (bodyJ() + M + 2 * mbrl * c) + disturbance;
       omega += alpha * dt;
       theta += omega * dt;
-      vl += al * dt;
-      vr += ar * dt;
       // Lying on the floor.
       if (fabs(theta) > 1.3) { theta = theta > 0 ? 1.3 : -1.3; omega = 0; }
+      // The wheels turn with the body too; slip < 1 loses some of that on the ground.
+      vl = slip * (ul + r * omega);
+      vr = slip * (ur + r * omega);
     }
-    if (!held) x += (vl + vr) / 2 * dt;
-    double perMeter = countsPerRev / (2 * M_PI * wheelRadius);
-    encL += vl * dt * perMeter;
-    encR += vr * dt * perMeter;
-#if MOTOR_TYPE == MOTOR_DC
-    simEncoder[PIN_ENC_LEFT_A] = lround(encL);
-    simEncoder[PIN_ENC_RIGHT_A] = lround(encR);
 #endif
+    if (!held) x += (vl + vr) / 2 * dt;
     // MPU-6050 on the body, pitch axis = sensor X, Z up when upright. It measures
     // gravity plus its own acceleration (wheels + rotation of the body), which is
     // what makes a plain accelerometer angle useless while balancing.
-    double a = held ? 0 : (al + ar) / 2 + imuHeight * alpha;
+    double a = held ? 0 : ((vl + vr) / 2 - v0) / dt + imuHeight * alpha;
     double t = theta + mountOffsetDeg * M_PI / 180;
     double fy = cos(t) * a + sin(t) * g;
     double fz = cos(t) * g - sin(t) * a;
@@ -146,10 +185,36 @@ struct Plant {
   }
 };
 
+#ifdef SIM_MUJOCO
+#include "mujoco_plant.h"
+#endif
+
 Plant plant;
+
+// Gives the simulated robot pendulum length L (see Plant::setLength). If that
+// needs smaller wheels, tells the firmware their size, as a user would.
+static void setRobotLength(double L) {
+  if (!plant.setLength(L)) {
+    cfg.wheelDiameter = plant.wheelRadius * 2000;
+    applyGainsForLength(cfg.pendulumLength);
+    lqrWeightsChanged = true;
+  }
+}
 std::vector<std::string> received;
 
-static void onLine(const std::string &l) {
+// What the server does with each line: check the "*HH" checksum and remove it.
+int badChecksums = 0;
+static std::string checked(const std::string &l) {
+  size_t n = l.size();
+  if (n < 3 || l[n - 3] != '*') { badChecksums++; return l; }   // every firmware line has one
+  uint8_t crc = 0;
+  for (size_t i = 0; i < n - 3; i++) crc = crc8(crc, l[i]);
+  if (strtol(l.c_str() + n - 2, nullptr, 16) != crc) badChecksums++;
+  return l.substr(0, n - 3);
+}
+
+static void onLine(const std::string &raw) {
+  std::string l = checked(raw);
   received.push_back(l);
   if (getenv("SIM_VERBOSE")) printf("  < %s\n", l.c_str());
 }
@@ -228,11 +293,8 @@ static bool check(bool ok, const char *what) {
 
 static void boot() {
   // Plant variations from the environment (used by the tuning scripts).
-  if (getenv("SIM_TAU")) plant.motorTau = atof(getenv("SIM_TAU"));
-  if (getenv("SIM_L")) plant.effLength = atof(getenv("SIM_L"));
   if (getenv("SIM_OFFSET")) plant.mountOffsetDeg = atof(getenv("SIM_OFFSET"));
   if (getenv("SIM_NOISE")) plant.noiseDeg = atof(getenv("SIM_NOISE"));
-  if (getenv("SIM_STICTION")) plant.stictionPwm = atoi(getenv("SIM_STICTION"));
   if (getenv("SIM_LAG")) plant.sensorLag = atof(getenv("SIM_LAG"));
   if (getenv("SIM_IMU_HEIGHT")) plant.imuHeight = atof(getenv("SIM_IMU_HEIGHT"));
   if (getenv("SIM_BIAS")) plant.gyroBiasDps = atof(getenv("SIM_BIAS"));
@@ -240,7 +302,7 @@ static void boot() {
   heldThrottle.clear();
   heldSteer.clear();
   remoteConnected = true;
-  // Like a power cycle: runtime state back to power-on values (EEPROM persists).
+  // Like a power cycle: runtime state back to power-on values (flash persists).
   autotuneAbort("reset");
   motorsEnabled = false;
   state = STATE_DISARMED;
@@ -250,6 +312,7 @@ static void boot() {
   Serial.onLine = onLine;
   setup();
   if (getenv("SIM_CONTROLLER")) cfg.controller = atoi(getenv("SIM_CONTROLLER"));
+  if (getenv("SIM_ACCELCOMP")) cfg.imuAccelCompensation = atoi(getenv("SIM_ACCELCOMP"));
   // LQR="maxPos maxSpeed maxAngle maxRate maxAccel dobBandwidth" overrides the LQR settings.
   if (getenv("LQR")) {
     sscanf(getenv("LQR"), "%f %f %f %f %f %f", &cfg.lqrMaxPosition, &cfg.lqrMaxSpeed, &cfg.lqrMaxAngle,
@@ -257,7 +320,11 @@ static void boot() {
     lqrWeightsChanged = true;
   }
   if (getenv("KALMAN")) sscanf(getenv("KALMAN"), "%f %f %f", &cfg.kalmanQAngle, &cfg.kalmanQBias, &cfg.kalmanR);
-  if (getenv("SIM_SCALE")) applyGainsForLength(plant.effLength);   // as if the autotuner had measured L
+  if (getenv("SIM_L")) setRobotLength(atof(getenv("SIM_L")));
+  if (getenv("SIM_SCALE")) {          // as if the autotuner had measured L and kappa
+    cfg.pendulumCoupling = plant.coupling();
+    applyGainsForLength(plant.fallLength());
+  }
   // GAINS=aKp,aKi,aKd,sKp,sKi,sLimit[,trigger,aggFactor] overrides the defaults (used by tuning scripts).
   if (getenv("GAINS")) {
     float g[8];
@@ -339,10 +406,7 @@ static bool scenarioDrive() {
     run(0.01);
     v += (plant.vl + plant.vr) / 2 / 200;
   }
-  double expected = cfg.Maxthrottle / 100 * plant.vMax;
-#if MOTOR_TYPE == MOTOR_STEPPER
-  expected = cfg.Maxthrottle / 100 * cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
-#endif
+  double expected = cfg.Maxthrottle / 100 * cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
   bool ok = check(stats.falls == 0 && state == STATE_BALANCING, "no fall while driving forward");
   ok &= check(plant.x - x0 > 0.3, "moves forward");
   ok &= check(fabs(v - expected) < 0.15 * expected, "reaches the throttle speed (+/- 15 %)");
@@ -375,14 +439,10 @@ static bool scenarioFall() {
   run(2);
   bool ok = check(state == STATE_FALLEN, "detects the fall");
   ok &= check(angleOutput == 0, "motor command is zero after falling");
-#if MOTOR_TYPE == MOTOR_DC
-  ok &= check(simPwm[PIN_LEFT_PWM] == 0 && simPwm[PIN_RIGHT_PWM] == 0, "PWM is zero after falling");
-#else
   ok &= check(!stepperLeft->enabled, "stepper drivers disabled after falling");
-#endif
   // Pick it up again: rotate it back upright over half a second so the gyro sees it.
   plant.held = true;
-  plant.vl = plant.vr = 0;
+  plant.vl = plant.vr = plant.ul = plant.ur = 0;
   double from = plant.theta;
   for (int i = 1; i <= 50; i++) {
     plant.theta = from * (1 - i / 50.0);
@@ -402,10 +462,9 @@ static bool scenarioFall() {
   return ok;
 }
 
-#if MOTOR_TYPE == MOTOR_STEPPER
 struct AtResult {
   bool seen = false, accepted = false;
-  double L = 0, L1 = 0, L2 = 0, offset = 0, r2 = 0, before = 0, after = 0;
+  double L = 0, kappa = 0, offset = 0, r2 = 0, before = 0, after = 0;
 };
 
 static AtResult lastAutotuneResult() {
@@ -413,8 +472,8 @@ static AtResult lastAutotuneResult() {
   for (auto &l : received) {
     if (l.rfind("AT,RESULT,", 0) == 0) {
       int acc;
-      r.seen = sscanf(l.c_str(), "AT,RESULT,%d,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &acc, &r.L, &r.L1, &r.L2, &r.offset,
-                      &r.r2, &r.before, &r.after) == 8;
+      r.seen = sscanf(l.c_str(), "AT,RESULT,%d,%lf,%lf,%lf,%lf,%lf,%lf", &acc, &r.L, &r.kappa, &r.offset,
+                      &r.r2, &r.before, &r.after) == 7;
       r.accepted = acc == 1;
     }
   }
@@ -422,11 +481,11 @@ static AtResult lastAutotuneResult() {
 }
 
 // One autotune run on a robot with the given true pendulum length and IMU offset.
-static bool autotuneCase(double length, double offsetDeg) {
+static bool autotuneCase(double length, double offsetDeg, double tolerance = 0.15) {
   plant = Plant();
   received.clear();
   boot();
-  plant.effLength = length;
+  setRobotLength(length);
   plant.mountOffsetDeg = offsetDeg;
   startBalancing(0);
   run(4);
@@ -434,30 +493,36 @@ static bool autotuneCase(double length, double offsetDeg) {
   stats.reset();
   run(35);
   AtResult r = lastAutotuneResult();
-  printf("  L %.2f m, IMU reads %+.2f deg upright -> measured L %.3f (%.3f / %.3f), offset %+.2f, R2 %.2f, "
-         "score %.4f -> %.4f\n", length, uprightReading, r.L, r.L1, r.L2, r.offset, r.r2, r.before, r.after);
+  printf("  L %.2f m, kappa %.2f, IMU reads %+.2f deg upright -> measured L %.3f, kappa %.2f, offset %+.2f, R2 %.2f, "
+         "score %.4f -> %.4f\n", length, plant.coupling(), uprightReading, r.L, r.kappa, r.offset, r.r2, r.before, r.after);
   bool ok = check(r.seen && r.accepted && !autotuneRunning(), "result accepted");
-  ok &= check(fabs(r.L / length - 1) < 0.15, "length within 15 %");
+  char what[48];
+  snprintf(what, sizeof what, "length within %.0f %%", tolerance * 100);
+  ok &= check(fabs(r.L / length - 1) < tolerance, what);
+  ok &= check(fabs(r.kappa / plant.coupling() - 1) < 0.15, "coupling within 15 %");
   ok &= check(fabs(r.offset - uprightReading) < 0.3, "zero within 0.3 deg of the upright reading");
-  ok &= check(fabs(cfg.pendulumLength - r.L) < 1e-3 && fabs(cfg.calibratedZeroAngle - r.offset) < 0.01,
+  ok &= check(fabs(cfg.pendulumLength - r.L) < 1e-3 && fabs(cfg.pendulumCoupling - r.kappa) < 1e-3 &&
+              fabs(cfg.calibratedZeroAngle - r.offset) < 0.01,
               "gains and zero applied");
   ok &= check(stats.falls == 0 && state == STATE_BALANCING, "balanced throughout");
   return ok;
 }
 
-#endif
 
 static bool scenarioAutotune() {
-#if MOTOR_TYPE == MOTOR_STEPPER
-  if (getenv("AT_L")) return autotuneCase(atof(getenv("AT_L")), 1.5);
+  if (getenv("AT_L")) return autotuneCase(atof(getenv("AT_L")), getenv("AT_OFFSET") ? atof(getenv("AT_OFFSET")) : 1.5);
   bool ok = true;
-  ok &= autotuneCase(0.20, 1.5);
-  ok &= autotuneCase(0.12, -1.0);
-  ok &= autotuneCase(0.32, 2.5);
+  ok &= autotuneCase(0.31, 1.5);    // Bailey
+  ok &= autotuneCase(0.25, -1.0);   // the shortest robot on Bailey's 94 mm wheels
+  ok &= autotuneCase(0.45, 2.5);    // taller
+  // A smaller robot on smaller wheels: its faster dynamics are measured less
+  // well (L 20-25 % high), but the result still balances better.
+  ok &= autotuneCase(0.15, 0.5, 0.35);
 
-  // Wheels slipping: the two length estimates disagree, nothing may change.
+  // Wheels slipping: the wheels tip the body far less than they should, so the
+  // measured coupling is implausible; nothing may change.
   plant = Plant();
-  plant.slip = 0.6;
+  plant.slip = 0.5;
   received.clear();
   boot();
   startBalancing(0);
@@ -466,7 +531,7 @@ static bool scenarioAutotune() {
   send("SCMD AUTOTUNE 1");
   run(35);
   AtResult r = lastAutotuneResult();
-  printf("  slipping wheels -> L %.3f / %.3f\n", r.L1, r.L2);
+  printf("  slipping wheels -> L %.3f, kappa %.2f\n", r.L, r.kappa);
   ok &= check(r.seen && !r.accepted, "slipping wheels: result rejected");
   ok &= check(cfg.anglePIDConKp == kp && cfg.calibratedZeroAngle == zero, "slipping wheels: settings restored");
   ok &= check(state == STATE_BALANCING, "slipping wheels: still balancing");
@@ -486,22 +551,11 @@ static bool scenarioAutotune() {
   for (auto &l : received) if (l.rfind("E, autotune aborted: driving", 0) == 0) aborted = true;
   ok &= check(aborted && !autotuneRunning() && cfg.anglePIDConKp == kp, "throttle aborts and restores");
   return ok;
-#else
-  boot();
-  startBalancing(0);
-  run(2);
-  received.clear();
-  send("SCMD AUTOTUNE 1");
-  run(0.1);
-  bool refused = std::find(received.begin(), received.end(), "E, AUTOTUNE needs stepper motors") != received.end();
-  return check(refused && !autotuneRunning(), "DC build refuses to autotune");
-#endif
 }
 
 // Gains scaled to the true pendulum length (what the autotuner ends up with)
 // against the fixed defaults, on robots much shorter and taller than assumed.
 static bool scenarioScaling() {
-#if MOTOR_TYPE == MOTOR_STEPPER
   bool ok = true;
   std::vector<double> lengths = { 0.07, 0.12, 0.2, 0.32, 0.45 };
   if (getenv("SCALING_L")) lengths = { atof(getenv("SCALING_L")) };
@@ -510,10 +564,13 @@ static bool scenarioScaling() {
     int fallsFixed = 0, fallsScaled = 0;
     for (int scaled = 0; scaled < 2; scaled++) {
       plant = Plant();
-      plant.effLength = L;
       received.clear();
       boot();
-      if (scaled) applyGainsForLength(L);
+      setRobotLength(L);
+      if (scaled) {
+        cfg.pendulumCoupling = plant.coupling();
+        applyGainsForLength(L);
+      }
       startBalancing(2);
       stats.reset();
       run(6);
@@ -534,9 +591,6 @@ static bool scenarioScaling() {
     ok &= check(fallsScaled == 0, what);
   }
   return ok;
-#else
-  return check(true, "steppers only");
-#endif
 }
 
 // Used by tune_gains.py: plant and gains from the environment, prints one score line.
@@ -553,11 +607,7 @@ static bool scenarioScore() {
   run(3);
   // Speed tracking: mean |speed error| over the next 3 s, as a fraction of the target.
   double target = cfg.Maxthrottle / 100 * cfg.speedFeedForward;  // fraction of full speed
-#if MOTOR_TYPE == MOTOR_STEPPER
   double full = cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
-#else
-  double full = plant.vMax;
-#endif
   double trackErr = 0;
   for (int i = 0; i < 300; i++) {
     run(0.01);
@@ -621,7 +671,7 @@ static bool scenarioLive() {
       fallenFor += 0.01;
       if (fallenFor > 2) {       // pick it up again
         plant.held = true;
-        plant.vl = plant.vr = 0;
+        plant.vl = plant.vr = plant.ul = plant.ur = 0;
         double from = plant.theta;
         for (int i = 1; i <= 50; i++) {
           plant.theta = from * (1 - i / 50.0);
@@ -647,7 +697,7 @@ static bool scenarioLqrGain() {
   float L = 0.2, q[4] = { 1 / 0.09f, 1 / 0.09f, 1 / sq(2 / 57.29578f), 1 / sq(30 / 57.29578f) }, r = 1 / 9.0f;
   if (getenv("LQR_ARGS")) sscanf(getenv("LQR_ARGS"), "%f %f %f %f %f %f", &L, &q[0], &q[1], &q[2], &q[3], &r);
   float K[4];
-  bool ok = lqrSolve(L, 0.005f, q, r, K);
+  bool ok = lqrSolve(L, 1, 0.005f, q, r, K);
   printf("K %.6f %.6f %.6f %.6f\n", K[0], K[1], K[2], K[3]);
   return ok;
 }
@@ -655,16 +705,14 @@ static bool scenarioLqrGain() {
 // Disturbance observer: a payload shifts the centre of mass mid-run. With the
 // observer the robot finds its new balance angle and holds position.
 static bool scenarioDisturbance() {
-#if MOTOR_TYPE == MOTOR_STEPPER
   bool ok = true;
-  const double L = 0.2, offsetDeg = 2.5;
-  const double dist = -9.81 * sin(offsetDeg * M_PI / 180) / L;   // same as the mass moving 2.5 deg back
+  const double offsetDeg = 2.5;
+  const double dist = -Plant().fallRate() * sin(offsetDeg * M_PI / 180);   // same as the mass moving 2.5 deg back
   double moved[2] = { 0, 0 };
   for (int withObserver = 0; withObserver < 2; withObserver++) {
     plant = Plant();
     received.clear();
     boot();
-    plant.effLength = L;
     if (!withObserver) cfg.dobBandwidth = 0;
     startBalancing(0);
     run(6);
@@ -686,9 +734,6 @@ static bool scenarioDisturbance() {
   ok &= check(fabs(moved[1]) < 0.05, "observer on: holds position (< 5 cm)");
   ok &= check(fabs(moved[1]) < fabs(moved[0]) / 3, "observer cuts the drift by 3x or more");
   return ok;
-#else
-  return check(true, "steppers only");
-#endif
 }
 
 // Kalman filter: the gyro bias drifts as the chip warms up; pitch must stay accurate.
@@ -708,6 +753,36 @@ static bool scenarioKalman() {
   bool ok = check(worst < 0.4, "pitch stays within 0.4 deg while the gyro bias drifts");
   ok &= check(fabs(imuGyroBias - plant.gyroBiasDps) < 0.3, "gyro bias tracked within 0.3 deg/s");
   ok &= check(stats.falls == 0 && state == STATE_BALANCING, "still balancing");
+
+  // Accelerometer compensation (imuAccelCompensation): pitch error while
+  // driving back and forth, without and with.
+  double err[2];
+  for (int comp = 0; comp < 2; comp++) {
+    plant = Plant();
+    received.clear();
+    boot();
+    cfg.imuAccelCompensation = comp;
+    startBalancing(0);
+    run(3);
+    double s = 0;
+    long n = 0;
+    for (int k = 0; k < 2; k++)
+      for (const char *t : { "SCMD Throttle 100", "SCMD Throttle -100" }) {
+        send(t);
+        for (int i = 0; i < 400; i++) {
+          run(0.01);
+          double e = pitchRaw - (plant.theta * 180 / M_PI + plant.mountOffsetDeg);
+          s += e * e;
+          n++;
+        }
+      }
+    send("SCMD Throttle 0");
+    run(5);
+    err[comp] = sqrt(s / n);
+    ok &= check(stats.falls == 0 && state == STATE_BALANCING, comp ? "with compensation: drives without falling" : "without compensation: drives without falling");
+  }
+  printf("  pitch error while driving: %.2f deg RMS without accelerometer compensation, %.2f with\n", err[0], err[1]);
+  ok &= check(err[1] < err[0] / 2, "accelerometer compensation at least halves the pitch error while driving");
   return ok;
 }
 
@@ -721,7 +796,7 @@ static bool scenarioLqrSolver() {
   bool ok = true;
   for (auto &c : cases) {
     float K[4];
-    bool solved = lqrSolve(c.L, 0.005f, c.q, c.r, K);
+    bool solved = lqrSolve(c.L, 1, 0.005f, c.q, c.r, K);
     double err = 0;
     for (int i = 0; i < 4; i++) err = std::max(err, (double)fabs((K[i] - c.K[i]) / c.K[i]));
     char what[80];
@@ -735,7 +810,6 @@ static bool scenarioLqrSolver() {
 // and full throttle with Maxthrottle 95 (the firmware caps the target at 90 %
 // of top speed) with full reversals.
 static bool scenarioLimits() {
-#if BOARD_ESP32 && MOTOR_TYPE == MOTOR_STEPPER
   if (getenv("LIMITS_TRACE")) {         // one fast drive with one controller, traced
     plant = Plant();
     boot();
@@ -747,8 +821,9 @@ static bool scenarioLimits() {
     for (int k = 0; k < 800 && state == STATE_BALANCING; k++) {
       run(0.01);
       if (k % 10 == 0)
-        printf("t=%.1f set%%=%.1f v=%.3f vcmd=%.3f th=%.2f c0=%.3f c10=%.3f step=%.2e\n", simMicros / 1e6, speedSetpoint,
-               (plant.vl + plant.vr) / 2, speedCmd, plant.theta * 180 / M_PI, mpcC[0], mpcC[10], mpcStepSize);
+        printf("t=%.1f set%%=%.1f v=%.3f vcmd=%.3f th=%.2f plan c0=%.3f c10=%.3f iter=%u\n", simMicros / 1e6, speedSetpoint,
+               (plant.vl + plant.vr) / 2, speedCmd, plant.theta * 180 / M_PI, mpcCurrent.c[0], mpcCurrent.c[10],
+               mpcCurrent.iterations);
     }
     return true;
   }
@@ -795,14 +870,11 @@ static bool scenarioLimits() {
     printf("  %s: hardest push survived %.2f rad/s; fast driving: %d falls, max tilt %.1f deg, top speed %.2f m/s\n",
            names[c], hardest[c], driveFalls[c], driveTilt[c], stats.maxSpeed);
   }
-  printf("  MPC iterations per step: worst %u of 40\n", worstIterations);
+  printf("  MPC (TinyMPC) iterations per plan: worst %u of %d\n", worstIterations, MPC_MAX_ITER);
   bool ok = check(hardest[1] >= hardest[0], "MPC survives pushes at least as hard as LQR");
   ok &= check(driveFalls[0] == 0 && driveFalls[1] == 0,
               "LQR and MPC: no falls at full throttle (Maxthrottle 95, capped at 90 % of top speed) with full reversals");
   return ok;
-#else
-  return check(true, "ESP32-S3 stepper build only");
-#endif
 }
 
 static bool scenarioCommands() {
@@ -860,24 +932,72 @@ static bool scenarioCommands() {
   send(std::string(200, 'X'));
   run(0.01);
   ok &= check(true, "long line ignored without crashing");
+
+  // Checksums: every line from the firmware carries a valid one; a command
+  // with a good one is executed, a corrupted one is rejected, none is fine.
+  auto withCrc = [](const std::string &l) {
+    uint8_t crc = 0;
+    for (char c : l) crc = crc8(crc, c);
+    char b[8];
+    snprintf(b, sizeof b, "*%02X", crc);
+    return l + b;
+  };
+  received.clear();
+  badChecksums = 0;
+  send(withCrc("SCMD speedPIDKp 4000"));
+  run(0.01);
+  ok &= check(fabs(cfg.speedPIDKp - 0.4f) < 1e-5, "command with a good checksum executed");
+  std::string bad = withCrc("SCMD speedPIDKp 5000");
+  bad[14] = '6';                                     // one character changed in transit
+  send(bad);
+  run(0.01);
+  bool rejected = false;
+  for (auto &l : received) if (l == "E, checksum mismatch, line ignored") rejected = true;
+  ok &= check(fabs(cfg.speedPIDKp - 0.4f) < 1e-5 && rejected, "command with a bad checksum rejected and reported");
+  send("SCMD speedPIDKp 4500");
+  run(0.5);
+  ok &= check(fabs(cfg.speedPIDKp - 0.45f) < 1e-5, "command without a checksum still accepted");
+  ok &= check(badChecksums == 0 && received.size() > 5, "every line from the firmware has a valid checksum");
   return ok;
 }
 
 static bool scenarioEeprom() {
+  simNvs = SimNvs();
   boot();
-  bool ok = check(cfg.magic == SETTINGS_MAGIC, "blank EEPROM -> defaults");
-#if BOARD_ESP32
-  ok &= check(EEPROM.begun > 0 && EEPROM.commits > 0, "ESP32: flash EEPROM begun and committed");
-  ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "ESP32: I2C on the configured pins");
-#endif
+  bool ok = check(cfg.magic == SETTINGS_MAGIC && simNvs.writes == 1, "blank flash -> defaults, saved once");
+  ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "I2C on the configured pins");
   cfg.anglePIDConKp = 12.34f;
   saveSettings();
   cfg.anglePIDConKp = 0;
   ok &= check(loadSettings() && fabs(cfg.anglePIDConKp - 12.34f) < 1e-6, "save/load round trip");
-  EEPROM.mem[SETTINGS_ADDRESS + 10] ^= 0x55;   // corrupt one byte
+  boot();
+  ok &= check(fabs(cfg.anglePIDConKp - 12.34f) < 1e-6, "settings survive a reboot");
+  simNvs.data.begin()->second[10] ^= 0x55;   // corrupt one byte
   ok &= check(!loadSettings(), "corrupted settings are rejected");
+  saveSettings();
+  simNvs.data.begin()->second[2] += 1;       // a different layout version
+  ok &= check(!loadSettings(), "settings from another layout version are rejected");
   eraseSettings();
-  ok &= check(!loadSettings(), "erased settings are rejected");
+  ok &= check(!loadSettings() && simNvs.data.empty(), "erased settings are rejected");
+  return ok;
+}
+
+// Hardware watchdog: armed after setup, fed every loop, and a watchdog
+// restart is reported at boot.
+static bool scenarioWatchdog() {
+  simWatchdog = SimWatchdog();
+  boot();
+  bool ok = check(simWatchdog.added == 1 && simWatchdog.timeoutMs == WATCHDOG_MS, "watchdog armed on the loop task");
+  long before = simWatchdog.feeds;
+  run(1);
+  ok &= check(simWatchdog.feeds - before >= 1000, "fed on every loop pass");
+  received.clear();
+  simResetReason = ESP_RST_TASK_WDT;
+  boot();
+  simResetReason = ESP_RST_POWERON;
+  bool reported = false;
+  for (auto &l : received) if (l.rfind("E, restarted by the watchdog", 0) == 0) reported = true;
+  ok &= check(reported, "a watchdog restart is reported");
   return ok;
 }
 
@@ -908,7 +1028,7 @@ int main(int argc, char **argv) {
     { "scaling", scenarioScaling },   { "disturbance", scenarioDisturbance },
     { "kalman", scenarioKalman },     { "lqrsolver", scenarioLqrSolver },
     { "limits", scenarioLimits },
-    { "eeprom", scenarioEeprom },     { "score", scenarioScore },
+    { "eeprom", scenarioEeprom },     { "watchdog", scenarioWatchdog },     { "score", scenarioScore },
     { "demo", scenarioDemo },         { "lqrgain", scenarioLqrGain },         { "live", scenarioLive },     { "motortest", scenarioMotorTest },
   };
   if (argc < 2) {

@@ -8,6 +8,7 @@
   <title>Bailey</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -26,6 +27,7 @@
     <section class="card video-card">
       <div class="video" id="video">
         <img id="videoImg" alt="">
+        <video id="videoEl" muted playsinline autoplay></video>
         <div class="video-off" id="videoOff">Video off</div>
         <div class="hud">
           <div class="hud-pitch"><span id="hudPitch">–</span>°</div>
@@ -35,7 +37,7 @@
       </div>
       <div class="row">
         <button id="videoBtn">Video on</button>
-        <a class="button ghost" href="snapshot.jpg" target="_blank" rel="noopener">Snapshot</a>
+        <button class="ghost" id="snapshotBtn">Snapshot</button>
         <span class="meta" id="cameraStatus"></span>
       </div>
     </section>
@@ -63,13 +65,22 @@
         <div><span class="label">Wobble</span><span class="value" id="wobble" title="Integral of squared angle error per telemetry period (deg²·s)">–</span></div>
         <div><span class="label">Balance angle</span><span class="value" id="balAngle" title="Pitch the disturbance observer says the robot balances at (LQR). Moves when the load shifts.">–</span></div>
       </div>
+      <div class="row chart-bar">
+        <div class="segmented" role="group" aria-label="Chart history">
+          <button data-history="20" class="on">20 s</button>
+          <button data-history="60">1 min</button>
+          <button data-history="300">5 min</button>
+        </div>
+        <button class="ghost" id="liveBtn" hidden>Back to live</button>
+        <span class="meta">Drag on a chart to zoom</span>
+      </div>
       <figure class="chart">
-        <figcaption>Pitch (°), last 20 s</figcaption>
-        <canvas id="pitchChart" height="110"></canvas>
+        <figcaption>Pitch and balance angle (°)</figcaption>
+        <div id="pitchChart"></div>
       </figure>
       <figure class="chart">
-        <figcaption>Wheel speed (% of full), last 20 s</figcaption>
-        <canvas id="speedChart" height="110"></canvas>
+        <figcaption>Wheel speed (% of full)</figcaption>
+        <div id="speedChart"></div>
       </figure>
     </section>
 
@@ -80,7 +91,7 @@
         <span class="label">Controller</span>
         <div class="segmented" role="group" aria-label="Balance controller">
           <button id="ctrlLqr" data-controller="1" title="LQR + disturbance observer (steppers)">LQR</button>
-          <button id="ctrlMpc" data-controller="2" title="Model predictive control: LQR that plans 1.2 s ahead around the motors' limits (ESP32-S3 only)">MPC</button>
+          <button id="ctrlMpc" data-controller="2" title="Model predictive control (TinyMPC): plans 1.2 s ahead within the motors' limits, LQR follows the plan">MPC</button>
           <button id="ctrlPid" data-controller="0" title="Cascaded PIDs">PID</button>
         </div>
         <span class="meta" id="lqrInfo"></span>
@@ -164,6 +175,7 @@
 
   <div class="toast" id="toast" role="status"></div>
 
+  <script src="vendor/uplot/uPlot.iife.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 </body>

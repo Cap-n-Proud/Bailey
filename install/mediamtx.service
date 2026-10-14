@@ -1,0 +1,15 @@
+# MediaMTX: Bailey's camera over WebRTC (install/mediamtx.yml). Installed by install/install.sh.
+[Unit]
+Description=MediaMTX video server for the Bailey camera
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+SupplementaryGroups=video
+ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/bailey.yml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,23 +1,23 @@
 // Bailey self-balancing robot firmware.
 //
-// Control structure (runs at a fixed 200 Hz, see CONTROL_PERIOD_US):
+// ESP32-S3 with two stepper motors and an MPU-6050. The balance loop runs at a
+// fixed 500 Hz (CONTROL_PERIOD_US) with one of three controllers:
 //
-//   throttle -> speed setpoint -> [speed PID] -> pitch setpoint -> [angle PID] -> motors
-//                                     ^ wheel speed (encoders)       ^ pitch (IMU)
+//   LQR (default)  state feedback from position, speed, pitch and pitch rate (lqr.ino)
+//   MPC            plans 1.2 s ahead around the motors' limits, LQR tracks the plan (mpc.ino)
+//   PID            throttle -> speed setpoint -> [speed PID] -> pitch setpoint -> [angle PID] -> motors
 //
 // Sign convention used everywhere: pitch > 0 means leaning forward, a positive
 // motor command drives the robot forward and a positive wheel speed means moving
-// forward. Use the imu*/motor*/encoder*Invert settings to make the hardware match.
+// forward. Use the imu* and motor*Invert settings to make the hardware match.
 
 #include <Wire.h>
-#include <EEPROM.h>
+#include <Preferences.h>     // settings in the ESP32's NVS flash (settings.ino)
+#include <esp_task_wdt.h>   // hardware watchdog
+#include <esp_system.h>
 #include <MPU6050.h>    // Electronic Cats MPU6050 (maintained i2cdevlib): https://github.com/ElectronicCats/mpu6050
-#include "bailey.h"     // must come before the MOTOR_TYPE checks below
-#if MOTOR_TYPE == MOTOR_DC
-#include <Encoder.h>    // https://www.pjrc.com/teensy/td_libs_Encoder.html
-#else
+#include "bailey.h"
 #include <FastAccelStepper.h>  // https://github.com/gin66/FastAccelStepper
-#endif
 
 Settings cfg;
 Pid anglePID;
@@ -55,16 +55,22 @@ char lastEvent[32] = "Boot";
 void setEvent(const char *event) {
   strncpy(lastEvent, event, sizeof(lastEvent) - 1);
   lastEvent[sizeof(lastEvent) - 1] = 0;
-  Serial.print(F("EV,"));
-  Serial.println(lastEvent);
+  out.print(F("EV,"));
+  out.println(lastEvent);
+}
+
+// Hardware watchdog: if loop() stops running for WATCHDOG_MS (a hang, a
+// deadlock, an endless loop), the ESP32 restarts. A restart stops the step
+// pulses, so the wheels stop instead of carrying on at their last speed.
+// Started after setup(): the gyro calibration at boot takes longer than that.
+static void watchdogStart() {
+  esp_task_wdt_config_t wdt = { WATCHDOG_MS, 0, true };   // timeout, no idle-task checks, panic -> restart
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+  esp_task_wdt_add(NULL);                                 // this task: the Arduino loop
 }
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-#if BOARD_ESP32
-  // The ESP32 emulates EEPROM in flash: reserve it before the first read.
-  EEPROM.begin(EEPROM_BYTES);
-#endif
 
   if (!loadSettings()) {
     loadDefaultSettings();
@@ -81,19 +87,24 @@ void setup() {
   anglePID.reset();
   speedPID.reset();
 
-#if BOARD_ESP32
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-#else
-  Wire.begin();
-#endif
   imuSetup();   // keep the robot still: the gyro is calibrated here
 
   lastControlUs = micros();
   remoteInit();
+  esp_reset_reason_t why = esp_reset_reason();
+  if (why == ESP_RST_TASK_WDT || why == ESP_RST_INT_WDT || why == ESP_RST_WDT)
+    out.println(F("E, restarted by the watchdog: the firmware had stopped running"));
+  else if (why == ESP_RST_BROWNOUT)
+    out.println(F("E, restarted after a brownout: check the power supply"));
+  else if (why == ESP_RST_PANIC)
+    out.println(F("E, restarted after a crash"));
+  watchdogStart();
   setEvent("Ready");
 }
 
 void loop() {
+  esp_task_wdt_reset();
   commsRead();
 
   // Drive watchdog: the remote repeats Throttle/Steer while they are non-zero,
@@ -129,11 +140,9 @@ void loop() {
   motorTestReport();
 }
 
-// LQR and MPC (which shares the LQR's model, state and observer) need the
-// steppers' exact acceleration; DC motors always use the PIDs. MPC needs the ESP32-S3.
+// MPC shares the LQR's model, state and observer.
 static bool wantLqr() {
-  return MOTOR_TYPE == MOTOR_STEPPER &&
-         (cfg.controller == CONTROLLER_LQR || (BOARD_ESP32 && cfg.controller == CONTROLLER_MPC));
+  return cfg.controller == CONTROLLER_LQR || cfg.controller == CONTROLLER_MPC;
 }
 
 // ...and a solved gain: if the Riccati solver ever failed, balance with the PIDs.
