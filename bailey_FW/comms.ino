@@ -63,11 +63,9 @@ static const char P_speedRamp[] PROGMEM = "speedRamp";
 static const char P_speedFeedForward[] PROGMEM = "speedFeedForward";
 static const char P_Maxsteer[] PROGMEM = "Maxsteer";
 static const char P_Maxthrottle[] PROGMEM = "Maxthrottle";
-static const char P_encoderCountsPerSecFull[] PROGMEM = "encoderCountsPerSecFull";
 static const char P_stepperMaxSpeed[] PROGMEM = "stepperMaxSpeed";
 static const char P_stepperMaxAccel[] PROGMEM = "stepperMaxAccel";
 static const char P_stepsPerRev[] PROGMEM = "stepsPerRev";
-static const char P_encoderCountsPerRev[] PROGMEM = "encoderCountsPerRev";
 static const char P_wheelDiameter[] PROGMEM = "wheelDiameter";
 static const char P_autotuneAmplitude[] PROGMEM = "autotuneAmplitude";
 static const char P_lqrMaxPosition[] PROGMEM = "lqrMaxPosition";
@@ -102,11 +100,9 @@ static const FloatParam floatParams[] = {
   { P_speedFeedForward, &cfg.speedFeedForward, 100, false },
   { P_Maxsteer, &cfg.Maxsteer, 1, false },
   { P_Maxthrottle, &cfg.Maxthrottle, 1, false },
-  { P_encoderCountsPerSecFull, &cfg.encoderCountsPerSecFull, 1, false },
   { P_stepperMaxSpeed, &cfg.stepperMaxSpeed, 1, false },
   { P_stepperMaxAccel, &cfg.stepperMaxAccel, 1, false },
   { P_stepsPerRev, &cfg.stepsPerRev, 1, false },
-  { P_encoderCountsPerRev, &cfg.encoderCountsPerRev, 1, false },
   { P_wheelDiameter, &cfg.wheelDiameter, 1, false },
   { P_autotuneAmplitude, &cfg.autotuneAmplitude, 100, false },
   { P_lqrMaxPosition, &cfg.lqrMaxPosition, 1, false },
@@ -128,27 +124,19 @@ struct IntParam {
   long minValue, maxValue;
 };
 
-static const char P_motorLeftMinimumSpeed[] PROGMEM = "motorLeftMinimumSpeed";
-static const char P_motorRightMinimumSpeed[] PROGMEM = "motorRightMinimumSpeed";
 static const char P_imuAxis[] PROGMEM = "imuAxis";
 static const char P_imuInvert[] PROGMEM = "imuInvert";
 static const char P_motorLeftInvert[] PROGMEM = "motorLeftInvert";
 static const char P_motorRightInvert[] PROGMEM = "motorRightInvert";
-static const char P_encoderLeftInvert[] PROGMEM = "encoderLeftInvert";
-static const char P_encoderRightInvert[] PROGMEM = "encoderRightInvert";
 static const char P_debugSampleRate[] PROGMEM = "debugSampleRate";
 static const char P_telemetryPeriod[] PROGMEM = "telemetryPeriod";
 static const char P_controller[] PROGMEM = "controller";
 
 static const IntParam intParams[] = {
-  { P_motorLeftMinimumSpeed, &cfg.motorLeftMinimumSpeed, 1, 0, 254 },
-  { P_motorRightMinimumSpeed, &cfg.motorRightMinimumSpeed, 1, 0, 254 },
   { P_imuAxis, &cfg.imuAxis, 1, 0, 2 },
   { P_imuInvert, &cfg.imuInvert, 1, 0, 1 },
   { P_motorLeftInvert, &cfg.motorLeftInvert, 1, 0, 1 },
   { P_motorRightInvert, &cfg.motorRightInvert, 1, 0, 1 },
-  { P_encoderLeftInvert, &cfg.encoderLeftInvert, 1, 0, 1 },
-  { P_encoderRightInvert, &cfg.encoderRightInvert, 1, 0, 1 },
   { P_debugSampleRate, &cfg.debugSampleRate, 2, 50, 10000 },
   { P_telemetryPeriod, &cfg.telemetryPeriod, 2, 50, 10000 },
   { P_controller, &cfg.controller, 1, 0, 2 },
@@ -202,29 +190,19 @@ static void setCommand(const char *arg, const char *value) {
 
   if (is(arg, P_controller)) {
     // Switching controllers mid-balance would hand over a half-wound state.
-    if (state == STATE_BALANCING) {
+    if (motorsEnabled) {
       Serial.println(F("E, switch controller with the motors off"));
-      return;
-    }
-    if (MOTOR_TYPE != MOTOR_STEPPER && atoi(value) != CONTROLLER_PID) {
-      Serial.println(F("E, LQR and MPC need stepper motors"));
-      return;
-    }
-    if (!BOARD_ESP32 && atoi(value) == CONTROLLER_MPC) {
-      Serial.println(F("E, MPC needs the ESP32-S3 (too slow on the Mega)"));
       return;
     }
     setParam(arg, value);
     PIDParamTX();
     LQRParamTX();
   } else if (setParam(arg, value)) {
-#if MOTOR_TYPE == MOTOR_STEPPER
     // The gains are physical (gains.ino): if the speed scale changed, recompute them.
     if (is(arg, P_stepperMaxSpeed) || is(arg, P_stepsPerRev) || is(arg, P_wheelDiameter)) {
       applyGainsForLength(cfg.pendulumLength);
       PIDParamTX();
     }
-#endif
   } else if (is(arg, PSTR("Motors"))) {
     motorsEnabled = atoi(value) != 0;
     if (!motorsEnabled) {
@@ -242,13 +220,9 @@ static void setCommand(const char *arg, const char *value) {
     else autotuneAbort("stopped");
   } else if (is(arg, PSTR("pendulumLength"))) {
     // "SCMD pendulumLength 230": set gains for a measured length in mm (steppers).
-#if MOTOR_TYPE == MOTOR_STEPPER
     float mm = constrain(v, 50, 600);
     applyGainsForLength(mm / 1000.0f);
     PIDParamTX();
-#else
-    Serial.println(F("E, pendulumLength needs stepper motors"));
-#endif
   } else if (is(arg, PSTR("SerialDebug"))) {
     cfg.debug = atoi(value) != 0;
   } else if (is(arg, PSTR("CalibrateZero"))) {
@@ -405,7 +379,7 @@ void PIDParamTX() {
   Serial.print(lround(cfg.anglePIDAggKd * 100)); Serial.print(',');
   Serial.print(lround(cfg.TriggerAngleAggressive * 100)); Serial.print(',');
   Serial.print(lround(cfg.calibratedZeroAngle * 100)); Serial.print(',');
-  Serial.print(MOTOR_TYPE); Serial.print(',');
+  Serial.print(2); Serial.print(',');   // OPT: motor type, always 2 (steppers) since firmware 3
   Serial.println(cfg.controller);
 }
 

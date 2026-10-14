@@ -1,15 +1,16 @@
 // PC simulation of the Bailey firmware.
 //
-// Compiles the real firmware (.ino files) against the stub Arduino API in
-// stubs/ and runs it against a simple model of a two-wheeled inverted pendulum:
-// DC gear motors with encoders (default) or steppers (-DMOTOR_TYPE=2).
+// Compiles the real firmware (.ino files, with Eigen and TinyMPC) against the
+// stub Arduino API in stubs/ and runs it against a simple model of a
+// two-wheeled inverted pendulum on steppers.
 //
-//   ./run_tests.sh            builds both variants and runs every scenario
-//   ./sim_dc <scenario>       runs one scenario, prints a summary, exits 1 on failure
+//   ./run_tests.sh            builds the simulator and runs every scenario
+//   ./sim <scenario>          runs one scenario, prints a summary, exits 1 on failure
+#define ARDUINO_ARCH_ESP32 1     // the firmware's only board
+#define BAILEY_SIMULATOR 1       // mpc.ino: solve in line instead of on the second core
 #include "Arduino.h"
 #include "EEPROM.h"
 #include "Wire.h"
-#include "Encoder.h"
 #include "MPU6050.h"
 #include "FastAccelStepper.h"
 #include <algorithm>
@@ -25,7 +26,6 @@
 uint64_t simMicros = 0;
 int simPinValue[64];
 int simPwm[64];
-long simEncoder[64];
 int16_t simAccel[3], simGyro[3];
 SimSerial Serial;
 SimEEPROM EEPROM;
@@ -47,11 +47,6 @@ struct Plant {
   double wheelRadius = 0.047;
   double effLength = 0.20;      // (I + m l^2) / (m l) of the body
   double g = 9.81;
-  // Pololu 100:1, ~100 rpm at 12 V
-  double vMax = 100.0 / 60.0 * 2 * M_PI * 0.047;
-  double motorTau = 0.08;       // s, speed response of the gear motor
-  int stictionPwm = 50;         // PWM below which the motor does not move
-  double countsPerRev = 6400;
   double stepsPerRev = 1600;    // 200-step motor, 1/8 microstepping
   double mountOffsetDeg = 1.5;  // IMU is tilted this much when the robot is truly upright
   double noiseDeg = 0.05;       // scales accelerometer and gyro noise
@@ -65,7 +60,6 @@ struct Plant {
   double theta = 0, omega = 0;  // rad, + = leaning forward
   double vl = 0, vr = 0;        // wheel ground speed m/s
   double x = 0;
-  double encL = 0, encR = 0;
   bool held = true;
   double alpha = 0;
   double pickupRate = 0;        // rad/s while someone is turning the robot by hand
@@ -73,32 +67,14 @@ struct Plant {
   std::mt19937 rng{42};
   std::normal_distribution<double> noise{0, 1};
 
-  double driveAccel(double v, int pwmPin, int in1, int in2) {
-#if MOTOR_TYPE == MOTOR_DC
-    int pwm = simPwm[pwmPin];
-    int dir = (simPinValue[in1] && !simPinValue[in2]) ? 1 : (simPinValue[in2] && !simPinValue[in1]) ? -1 : 0;
-    if (pwm == 0 || dir == 0) return -v / 0.5;                  // coasting
-    double u = dir * std::max(0, pwm - stictionPwm) / double(255 - stictionPwm);
-    return (u * vMax - v) / motorTau;
-#else
-    (void)v; (void)pwmPin; (void)in1; (void)in2;
-    return 0;
-#endif
-  }
-
   void step(double dt) {
     double al, ar;
-#if MOTOR_TYPE == MOTOR_DC
-    al = driveAccel(vl, PIN_LEFT_PWM, PIN_LEFT_IN1, PIN_LEFT_IN2);
-    ar = driveAccel(vr, PIN_RIGHT_PWM, PIN_RIGHT_IN1, PIN_RIGHT_IN2);
-#else
     // Steppers follow the library's ramped step rate exactly (no stalling modelled).
     double k = 2 * M_PI * wheelRadius / stepsPerRev;
     stepperLeft->advance(dt);
     stepperRight->advance(dt);
     al = (slip * stepperLeft->speed * k - vl) / dt;
     ar = (slip * stepperRight->speed * k - vr) / dt;
-#endif
     if (held) {
       // Held in the air / on a stand: the body doesn't move, the wheels spin freely.
       omega = 0;
@@ -115,13 +91,6 @@ struct Plant {
       if (fabs(theta) > 1.3) { theta = theta > 0 ? 1.3 : -1.3; omega = 0; }
     }
     if (!held) x += (vl + vr) / 2 * dt;
-    double perMeter = countsPerRev / (2 * M_PI * wheelRadius);
-    encL += vl * dt * perMeter;
-    encR += vr * dt * perMeter;
-#if MOTOR_TYPE == MOTOR_DC
-    simEncoder[PIN_ENC_LEFT_A] = lround(encL);
-    simEncoder[PIN_ENC_RIGHT_A] = lround(encR);
-#endif
     // MPU-6050 on the body, pitch axis = sensor X, Z up when upright. It measures
     // gravity plus its own acceleration (wheels + rotation of the body), which is
     // what makes a plain accelerometer angle useless while balancing.
@@ -228,11 +197,9 @@ static bool check(bool ok, const char *what) {
 
 static void boot() {
   // Plant variations from the environment (used by the tuning scripts).
-  if (getenv("SIM_TAU")) plant.motorTau = atof(getenv("SIM_TAU"));
   if (getenv("SIM_L")) plant.effLength = atof(getenv("SIM_L"));
   if (getenv("SIM_OFFSET")) plant.mountOffsetDeg = atof(getenv("SIM_OFFSET"));
   if (getenv("SIM_NOISE")) plant.noiseDeg = atof(getenv("SIM_NOISE"));
-  if (getenv("SIM_STICTION")) plant.stictionPwm = atoi(getenv("SIM_STICTION"));
   if (getenv("SIM_LAG")) plant.sensorLag = atof(getenv("SIM_LAG"));
   if (getenv("SIM_IMU_HEIGHT")) plant.imuHeight = atof(getenv("SIM_IMU_HEIGHT"));
   if (getenv("SIM_BIAS")) plant.gyroBiasDps = atof(getenv("SIM_BIAS"));
@@ -339,10 +306,7 @@ static bool scenarioDrive() {
     run(0.01);
     v += (plant.vl + plant.vr) / 2 / 200;
   }
-  double expected = cfg.Maxthrottle / 100 * plant.vMax;
-#if MOTOR_TYPE == MOTOR_STEPPER
-  expected = cfg.Maxthrottle / 100 * cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
-#endif
+  double expected = cfg.Maxthrottle / 100 * cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
   bool ok = check(stats.falls == 0 && state == STATE_BALANCING, "no fall while driving forward");
   ok &= check(plant.x - x0 > 0.3, "moves forward");
   ok &= check(fabs(v - expected) < 0.15 * expected, "reaches the throttle speed (+/- 15 %)");
@@ -375,11 +339,7 @@ static bool scenarioFall() {
   run(2);
   bool ok = check(state == STATE_FALLEN, "detects the fall");
   ok &= check(angleOutput == 0, "motor command is zero after falling");
-#if MOTOR_TYPE == MOTOR_DC
-  ok &= check(simPwm[PIN_LEFT_PWM] == 0 && simPwm[PIN_RIGHT_PWM] == 0, "PWM is zero after falling");
-#else
   ok &= check(!stepperLeft->enabled, "stepper drivers disabled after falling");
-#endif
   // Pick it up again: rotate it back upright over half a second so the gyro sees it.
   plant.held = true;
   plant.vl = plant.vr = 0;
@@ -402,7 +362,6 @@ static bool scenarioFall() {
   return ok;
 }
 
-#if MOTOR_TYPE == MOTOR_STEPPER
 struct AtResult {
   bool seen = false, accepted = false;
   double L = 0, L1 = 0, L2 = 0, offset = 0, r2 = 0, before = 0, after = 0;
@@ -445,10 +404,8 @@ static bool autotuneCase(double length, double offsetDeg) {
   return ok;
 }
 
-#endif
 
 static bool scenarioAutotune() {
-#if MOTOR_TYPE == MOTOR_STEPPER
   if (getenv("AT_L")) return autotuneCase(atof(getenv("AT_L")), 1.5);
   bool ok = true;
   ok &= autotuneCase(0.20, 1.5);
@@ -486,22 +443,11 @@ static bool scenarioAutotune() {
   for (auto &l : received) if (l.rfind("E, autotune aborted: driving", 0) == 0) aborted = true;
   ok &= check(aborted && !autotuneRunning() && cfg.anglePIDConKp == kp, "throttle aborts and restores");
   return ok;
-#else
-  boot();
-  startBalancing(0);
-  run(2);
-  received.clear();
-  send("SCMD AUTOTUNE 1");
-  run(0.1);
-  bool refused = std::find(received.begin(), received.end(), "E, AUTOTUNE needs stepper motors") != received.end();
-  return check(refused && !autotuneRunning(), "DC build refuses to autotune");
-#endif
 }
 
 // Gains scaled to the true pendulum length (what the autotuner ends up with)
 // against the fixed defaults, on robots much shorter and taller than assumed.
 static bool scenarioScaling() {
-#if MOTOR_TYPE == MOTOR_STEPPER
   bool ok = true;
   std::vector<double> lengths = { 0.07, 0.12, 0.2, 0.32, 0.45 };
   if (getenv("SCALING_L")) lengths = { atof(getenv("SCALING_L")) };
@@ -534,9 +480,6 @@ static bool scenarioScaling() {
     ok &= check(fallsScaled == 0, what);
   }
   return ok;
-#else
-  return check(true, "steppers only");
-#endif
 }
 
 // Used by tune_gains.py: plant and gains from the environment, prints one score line.
@@ -553,11 +496,7 @@ static bool scenarioScore() {
   run(3);
   // Speed tracking: mean |speed error| over the next 3 s, as a fraction of the target.
   double target = cfg.Maxthrottle / 100 * cfg.speedFeedForward;  // fraction of full speed
-#if MOTOR_TYPE == MOTOR_STEPPER
   double full = cfg.stepperMaxSpeed / plant.stepsPerRev * 2 * M_PI * plant.wheelRadius;
-#else
-  double full = plant.vMax;
-#endif
   double trackErr = 0;
   for (int i = 0; i < 300; i++) {
     run(0.01);
@@ -655,7 +594,6 @@ static bool scenarioLqrGain() {
 // Disturbance observer: a payload shifts the centre of mass mid-run. With the
 // observer the robot finds its new balance angle and holds position.
 static bool scenarioDisturbance() {
-#if MOTOR_TYPE == MOTOR_STEPPER
   bool ok = true;
   const double L = 0.2, offsetDeg = 2.5;
   const double dist = -9.81 * sin(offsetDeg * M_PI / 180) / L;   // same as the mass moving 2.5 deg back
@@ -686,9 +624,6 @@ static bool scenarioDisturbance() {
   ok &= check(fabs(moved[1]) < 0.05, "observer on: holds position (< 5 cm)");
   ok &= check(fabs(moved[1]) < fabs(moved[0]) / 3, "observer cuts the drift by 3x or more");
   return ok;
-#else
-  return check(true, "steppers only");
-#endif
 }
 
 // Kalman filter: the gyro bias drifts as the chip warms up; pitch must stay accurate.
@@ -735,7 +670,6 @@ static bool scenarioLqrSolver() {
 // and full throttle with Maxthrottle 95 (the firmware caps the target at 90 %
 // of top speed) with full reversals.
 static bool scenarioLimits() {
-#if BOARD_ESP32 && MOTOR_TYPE == MOTOR_STEPPER
   if (getenv("LIMITS_TRACE")) {         // one fast drive with one controller, traced
     plant = Plant();
     boot();
@@ -747,8 +681,9 @@ static bool scenarioLimits() {
     for (int k = 0; k < 800 && state == STATE_BALANCING; k++) {
       run(0.01);
       if (k % 10 == 0)
-        printf("t=%.1f set%%=%.1f v=%.3f vcmd=%.3f th=%.2f c0=%.3f c10=%.3f step=%.2e\n", simMicros / 1e6, speedSetpoint,
-               (plant.vl + plant.vr) / 2, speedCmd, plant.theta * 180 / M_PI, mpcC[0], mpcC[10], mpcStepSize);
+        printf("t=%.1f set%%=%.1f v=%.3f vcmd=%.3f th=%.2f plan u0=%.3f u10=%.3f iter=%u\n", simMicros / 1e6, speedSetpoint,
+               (plant.vl + plant.vr) / 2, speedCmd, plant.theta * 180 / M_PI, mpcCurrent.u[0], mpcCurrent.u[10],
+               mpcCurrent.iterations);
     }
     return true;
   }
@@ -795,14 +730,11 @@ static bool scenarioLimits() {
     printf("  %s: hardest push survived %.2f rad/s; fast driving: %d falls, max tilt %.1f deg, top speed %.2f m/s\n",
            names[c], hardest[c], driveFalls[c], driveTilt[c], stats.maxSpeed);
   }
-  printf("  MPC iterations per step: worst %u of 40\n", worstIterations);
+  printf("  MPC (TinyMPC) iterations per plan: worst %u of %d\n", worstIterations, MPC_MAX_ITER);
   bool ok = check(hardest[1] >= hardest[0], "MPC survives pushes at least as hard as LQR");
   ok &= check(driveFalls[0] == 0 && driveFalls[1] == 0,
               "LQR and MPC: no falls at full throttle (Maxthrottle 95, capped at 90 % of top speed) with full reversals");
   return ok;
-#else
-  return check(true, "ESP32-S3 stepper build only");
-#endif
 }
 
 static bool scenarioCommands() {
@@ -866,10 +798,8 @@ static bool scenarioCommands() {
 static bool scenarioEeprom() {
   boot();
   bool ok = check(cfg.magic == SETTINGS_MAGIC, "blank EEPROM -> defaults");
-#if BOARD_ESP32
   ok &= check(EEPROM.begun > 0 && EEPROM.commits > 0, "ESP32: flash EEPROM begun and committed");
   ok &= check(Wire.sda == PIN_I2C_SDA && Wire.scl == PIN_I2C_SCL, "ESP32: I2C on the configured pins");
-#endif
   cfg.anglePIDConKp = 12.34f;
   saveSettings();
   cfg.anglePIDConKp = 0;

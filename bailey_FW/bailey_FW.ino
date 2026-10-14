@@ -1,23 +1,21 @@
 // Bailey self-balancing robot firmware.
 //
-// Control structure (runs at a fixed 200 Hz, see CONTROL_PERIOD_US):
+// ESP32-S3 with two stepper motors and an MPU-6050. The balance loop runs at a
+// fixed 500 Hz (CONTROL_PERIOD_US) with one of three controllers:
 //
-//   throttle -> speed setpoint -> [speed PID] -> pitch setpoint -> [angle PID] -> motors
-//                                     ^ wheel speed (encoders)       ^ pitch (IMU)
+//   LQR (default)  state feedback from position, speed, pitch and pitch rate (lqr.ino)
+//   MPC            plans 1.2 s ahead around the motors' limits, LQR tracks the plan (mpc.ino)
+//   PID            throttle -> speed setpoint -> [speed PID] -> pitch setpoint -> [angle PID] -> motors
 //
 // Sign convention used everywhere: pitch > 0 means leaning forward, a positive
 // motor command drives the robot forward and a positive wheel speed means moving
-// forward. Use the imu*/motor*/encoder*Invert settings to make the hardware match.
+// forward. Use the imu* and motor*Invert settings to make the hardware match.
 
 #include <Wire.h>
 #include <EEPROM.h>
 #include <MPU6050.h>    // Electronic Cats MPU6050 (maintained i2cdevlib): https://github.com/ElectronicCats/mpu6050
-#include "bailey.h"     // must come before the MOTOR_TYPE checks below
-#if MOTOR_TYPE == MOTOR_DC
-#include <Encoder.h>    // https://www.pjrc.com/teensy/td_libs_Encoder.html
-#else
+#include "bailey.h"
 #include <FastAccelStepper.h>  // https://github.com/gin66/FastAccelStepper
-#endif
 
 Settings cfg;
 Pid anglePID;
@@ -61,10 +59,8 @@ void setEvent(const char *event) {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-#if BOARD_ESP32
   // The ESP32 emulates EEPROM in flash: reserve it before the first read.
   EEPROM.begin(EEPROM_BYTES);
-#endif
 
   if (!loadSettings()) {
     loadDefaultSettings();
@@ -81,11 +77,7 @@ void setup() {
   anglePID.reset();
   speedPID.reset();
 
-#if BOARD_ESP32
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-#else
-  Wire.begin();
-#endif
   imuSetup();   // keep the robot still: the gyro is calibrated here
 
   lastControlUs = micros();
@@ -129,11 +121,9 @@ void loop() {
   motorTestReport();
 }
 
-// LQR and MPC (which shares the LQR's model, state and observer) need the
-// steppers' exact acceleration; DC motors always use the PIDs. MPC needs the ESP32-S3.
+// MPC shares the LQR's model, state and observer.
 static bool wantLqr() {
-  return MOTOR_TYPE == MOTOR_STEPPER &&
-         (cfg.controller == CONTROLLER_LQR || (BOARD_ESP32 && cfg.controller == CONTROLLER_MPC));
+  return cfg.controller == CONTROLLER_LQR || cfg.controller == CONTROLLER_MPC;
 }
 
 // ...and a solved gain: if the Riccati solver ever failed, balance with the PIDs.

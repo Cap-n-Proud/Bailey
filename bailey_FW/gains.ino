@@ -29,11 +29,7 @@
 // Ground speed at 100 % motor command.
 float fullSpeedMps() {
   float turnsPerSec;
-#if MOTOR_TYPE == MOTOR_STEPPER
   turnsPerSec = cfg.stepperMaxSpeed / cfg.stepsPerRev;
-#else
-  turnsPerSec = cfg.encoderCountsPerSecFull / cfg.encoderCountsPerRev;
-#endif
   return turnsPerSec * (float)M_PI * cfg.wheelDiameter / 1000.0f;
 }
 

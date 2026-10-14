@@ -23,7 +23,6 @@
 // Progress is reported as "AT,<phase>" lines and the outcome as
 // "AT,RESULT,<accepted>,<L>,<L from g/p1>,<L from -1/p3>,<offset>,<R^2>,<score before>,<score after>".
 
-#if MOTOR_TYPE == MOTOR_STEPPER
 
 #define BASELINE_S   6.0f
 #define MEASURE_S    18.0f
@@ -325,13 +324,3 @@ void autotuneStep(float dt, float angleError) {
   if (phaseTime >= MEASURE_S) finishMeasure();
 }
 
-#else  // DC motors: the wheel acceleration isn't known well enough to fit the model.
-
-bool autotuneRunning() { return false; }
-void autotuneStart() { Serial.println(F("E, AUTOTUNE needs stepper motors")); }
-void autotuneAbort(const char *) {}
-void autotuneOnFall() {}
-float autotuneExcitation() { return 0; }
-void autotuneStep(float, float) {}
-
-#endif

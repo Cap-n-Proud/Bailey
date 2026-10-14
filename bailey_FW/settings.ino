@@ -13,37 +13,17 @@ void loadDefaultSettings() {
   cfg.stepperMaxSpeed = 4000;     // 200-step motor at 1/8 microstepping: 2.5 rev/s
   cfg.stepperMaxAccel = 40000;
   cfg.stepsPerRev = 1600;
-  // Pololu 100:1 gear motor with 64 CPR encoder (x4 decoding): 6400 counts per
-  // wheel turn, ~100 rpm at 12 V.
-  cfg.encoderCountsPerSecFull = 10700;
-  cfg.encoderCountsPerRev = 6400;
-  cfg.motorLeftMinimumSpeed = 55;
-  cfg.motorRightMinimumSpeed = 58;
 
   cfg.imuAxis = 0;
   cfg.imuInvert = 0;
   cfg.motorLeftInvert = 0;
   cfg.motorRightInvert = 0;
-  cfg.encoderLeftInvert = 0;
-  cfg.encoderRightInvert = 0;
 
   // Gains, checked in the simulator (test/) over a range of body heights, IMU
-  // offsets and noise, and (DC) motor lags. The autotuner replaces the guessed
+  // offsets and noise. The autotuner replaces the guessed
   // pendulum length with a measured one.
   cfg.pendulumLength = 0.20;
-#if MOTOR_TYPE == MOTOR_STEPPER
   applyGainsForLength(cfg.pendulumLength);
-#else
-  cfg.anglePIDConKp = 16.0;
-  cfg.anglePIDConKi = 6.0;
-  cfg.anglePIDConKd = 3.5;
-  cfg.anglePIDAggKp = cfg.anglePIDConKp * 1.3f;
-  cfg.anglePIDAggKi = cfg.anglePIDConKi * 1.3f;
-  cfg.anglePIDAggKd = cfg.anglePIDConKd * 1.3f;
-  cfg.speedPIDKp = 0.12;
-  cfg.speedPIDKi = 0.02;
-  cfg.speedPIDKd = 0;
-#endif
   cfg.TriggerAngleAggressive = 8.0;
   cfg.anglePIDOutputLimit = 100;
   cfg.calibratedZeroAngle = 0;
@@ -60,11 +40,7 @@ void loadDefaultSettings() {
 
   cfg.autotuneAmplitude = 0.7;
 
-#if MOTOR_TYPE == MOTOR_STEPPER
   cfg.controller = CONTROLLER_LQR;
-#else
-  cfg.controller = CONTROLLER_PID;
-#endif
   // LQR weights, observer and Kalman settings: chosen in the simulator over
   // robots of 12-30 cm, IMU offsets of +/-2 deg and up to 4x the expected
   // noise, then checked for gyro drift, payload shifts and 7-45 cm robots.
@@ -114,15 +90,11 @@ void saveSettings() {
   cfg.version = SETTINGS_VERSION;
   cfg.crc = settingsCrc(cfg);
   EEPROM.put(SETTINGS_ADDRESS, cfg);   // put() only writes bytes that changed
-#if BOARD_ESP32
   EEPROM.commit();                     // the ESP32 writes its flash copy only on commit
-#endif
 }
 
 void eraseSettings() {
   for (unsigned int i = 0; i < sizeof(Settings); i++)
     EEPROM.write(SETTINGS_ADDRESS + i, 0xFF);
-#if BOARD_ESP32
   EEPROM.commit();
-#endif
 }

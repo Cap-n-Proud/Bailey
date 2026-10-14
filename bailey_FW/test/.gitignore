@@ -1,4 +1,2 @@
-sim_dc
-sim_stepper
-sim_esp32
-sim_dev
+sim
+*.o

@@ -13,9 +13,8 @@
 // x' Q x + R a^2, with Q and R set from "how far each quantity may stray"
 // (lqrMax* settings, given for a 0.2 m robot).
 //
-// The Riccati equation is solved on the Arduino for the reference length
-// (~0.1 s of float math: done at boot, or when a weight changes while the
-// motors are off). Robots that differ only in L behave identically with time
+// The Riccati equation is solved on the board (Eigen, a few ms) for the
+// reference length: at boot, or when a weight changes while the motors are off. Robots that differ only in L behave identically with time
 // scaled by sqrt(L / g), so the gain for the measured L follows exactly by
 // rescaling (K_pos ~ 1/L, K_speed ~ 1/sqrt(L), K_pitch const, K_rate ~ sqrt(L)),
 // which is instant and safe to do while balancing.
@@ -49,138 +48,54 @@ float balanceAngle = 0;           // deg, from the disturbance observer (telemet
 static float dobRate = 0, dobAngle = 0;
 static float refPosition = 0, position = 0, speedCmd = 0;   // m, m, m/s
 
-// ---------- small dense matrix helpers (4x4, row major) ----------
+// ---------- model and Riccati solver (Eigen) ----------
 
-static void matMul(const Mat4 a, const Mat4 b, Mat4 out) {
-  Mat4 t;
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) {
-      float s = 0;
-      for (uint8_t k = 0; k < 4; k++) s += a[i][k] * b[k][j];
-      t[i][j] = s;
-    }
-  memcpy(out, t, sizeof(Mat4));
+// Exact discretisation for a step dt (the input is held constant over the step).
+// With w = sqrt(g / L) the pitch obeys pitch'' = w^2 pitch - a / L, whose
+// solution over one step is in cosh/sinh; the cart part is plain kinematics.
+void lqrModel(float L, float dt, Mat4 &Ad, Vec4 &Bd) {
+  float w = sqrt(G_ACC / L), c = cosh(w * dt), s = sinh(w * dt);
+  Ad << 1, dt, 0, 0,
+        0, 1,  0, 0,
+        0, 0,  c, s / w,
+        0, 0,  w * s, c;
+  Bd << dt * dt / 2, dt, -(c - 1) / G_ACC, -w * s / G_ACC;
 }
 
-static void matTranspose(const Mat4 a, Mat4 out) {
-  Mat4 t;
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) t[i][j] = a[j][i];
-  memcpy(out, t, sizeof(Mat4));
-}
-
-static void matAdd(const Mat4 a, const Mat4 b, Mat4 out) {
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) out[i][j] = a[i][j] + b[i][j];
-}
-
-// Gauss-Jordan with partial pivoting. Returns false if singular.
-static bool matInverse(const Mat4 a, Mat4 out) {
-  float m[4][8];
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) {
-      m[i][j] = a[i][j];
-      m[i][j + 4] = (i == j) ? 1 : 0;
-    }
-  for (uint8_t c = 0; c < 4; c++) {
-    uint8_t p = c;
-    for (uint8_t r = c + 1; r < 4; r++)
-      if (fabs(m[r][c]) > fabs(m[p][c])) p = r;
-    if (fabs(m[p][c]) < 1e-12f) return false;
-    if (p != c)
-      for (uint8_t j = 0; j < 8; j++) { float t = m[c][j]; m[c][j] = m[p][j]; m[p][j] = t; }
-    float inv = 1 / m[c][c];
-    for (uint8_t j = 0; j < 8; j++) m[c][j] *= inv;
-    for (uint8_t r = 0; r < 4; r++) {
-      if (r == c) continue;
-      float f = m[r][c];
-      if (f != 0)
-        for (uint8_t j = 0; j < 8; j++) m[r][j] -= f * m[c][j];
-    }
-  }
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) out[i][j] = m[i][j + 4];
-  return true;
-}
-
-// Discretised model for step dt (series to third order; |A| dt is ~0.04).
-static void lqrModel(float L, float dt, Mat4 Ad, float Bd[4]) {
-  Mat4 A = { { 0, 1, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 1 }, { 0, 0, G_ACC / L, 0 } };
-  float B[4] = { 0, 1, 0, -1 / L };
-  Mat4 A2, A3, ident = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } };
-  matMul(A, A, A2);
-  matMul(A2, A, A3);
-  // Ad = I + A dt + A^2 dt^2/2 + A^3 dt^3/6;  Bd = (I dt + A dt^2/2 + A^2 dt^3/6) B
-  Mat4 S;
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) {
-      Ad[i][j] = ident[i][j] + A[i][j] * dt + A2[i][j] * dt * dt / 2 + A3[i][j] * dt * dt * dt / 6;
-      S[i][j] = ident[i][j] * dt + A[i][j] * dt * dt / 2 + A2[i][j] * dt * dt * dt / 6;
-    }
-  for (uint8_t i = 0; i < 4; i++) {
-    Bd[i] = 0;
-    for (uint8_t j = 0; j < 4; j++) Bd[i] += S[i][j] * B[j];
-  }
-}
-
-// Solves the discrete algebraic Riccati equation with the structure-preserving
-// doubling algorithm (converges in ~20 iterations, unlike plain Riccati
-// iteration which needs thousands at a 5 ms step), then K = (R + B'PB)^-1 B'PA.
+// Solves the discrete algebraic Riccati equation
+//   P = A'PA - A'PB (r + B'PB)^-1 B'PA + Q
+// with the structure-preserving doubling algorithm (Chu, Fan, Lin, Wang 2004:
+// converges in ~20 iterations, where plain Riccati iteration needs thousands at
+// a 2 ms step), then K = (r + B'PB)^-1 B'PA. Matrix algebra by Eigen; the
+// solution is checked against SciPy's solve_discrete_are in the simulator tests.
 // Returns false if it didn't converge.
 bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P) {
-  Mat4 Ad, Gk, Hk, ident = { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } };
-  float Bd[4];
+  Mat4 Ad;
+  Vec4 Bd;
   lqrModel(L, dt, Ad, Bd);
-  Mat4 Ak;
-  memcpy(Ak, Ad, sizeof(Mat4));
-  for (uint8_t i = 0; i < 4; i++)
-    for (uint8_t j = 0; j < 4; j++) {
-      Gk[i][j] = Bd[i] * Bd[j] / r;
-      Hk[i][j] = (i == j) ? qDiag[i] : 0;
-    }
+  const Mat4 I = Mat4::Identity();
+  Mat4 A = Ad;
+  Mat4 G = Bd * Bd.transpose() / r;
+  Mat4 H = Eigen::Map<const Vec4>(qDiag).asDiagonal();
 
   for (uint8_t it = 0; it < 40; it++) {
-    Mat4 GH, W, Winv, AkT, T1, T2, Gn, Hn, An;
-    matMul(Gk, Hk, GH);
-    matAdd(ident, GH, W);
-    if (!matInverse(W, Winv)) return false;
-    matTranspose(Ak, AkT);
-    // A' = A W^-1 A
-    matMul(Ak, Winv, T1);
-    matMul(T1, Ak, An);
-    // Gk' = Gk + A W^-1 Gk A^T
-    matMul(T1, Gk, T2);
-    matMul(T2, AkT, T2);
-    matAdd(Gk, T2, Gn);
-    // Hk' = Hk + A^T Hk W^-1 A
-    matMul(AkT, Hk, T1);
-    matMul(T1, Winv, T1);
-    matMul(T1, Ak, T1);
-    matAdd(Hk, T1, Hn);
-
-    float change = 0, size = 0;
-    for (uint8_t i = 0; i < 4; i++)
-      for (uint8_t j = 0; j < 4; j++) {
-        change += fabs(Hn[i][j] - Hk[i][j]);
-        size += fabs(Hn[i][j]);
-      }
-    memcpy(Ak, An, sizeof(Mat4));
-    memcpy(Gk, Gn, sizeof(Mat4));
-    memcpy(Hk, Hn, sizeof(Mat4));
+    Eigen::PartialPivLU<Mat4> W(I + G * H);
+    if (!(W.rcond() > 1e-7f)) return false;
+    Mat4 WA = W.solve(A);                                   // W^-1 A
+    Mat4 Gn = G + A * W.solve(G) * A.transpose();           // G + A W^-1 G A'
+    Mat4 Hn = H + A.transpose() * H * WA;                   // H + A' H W^-1 A
+    Hn = (Hn + Hn.transpose()) / 2;                         // keep P exactly symmetric
+    A = A * WA;                                             // A W^-1 A
+    float change = (Hn - H).cwiseAbs().sum(), size = Hn.cwiseAbs().sum();
+    G = Gn;
+    H = Hn;
+    if (!H.allFinite()) return false;
     if (change <= 1e-6f * size) {
-      // Hk is P (also the MPC's terminal cost). K = (r + B'PB)^-1 B'P A
-      if (P) memcpy(*P, Hk, sizeof(Mat4));
-      float PB[4], bpb = 0;
-      for (uint8_t i = 0; i < 4; i++) {
-        PB[i] = 0;
-        for (uint8_t j = 0; j < 4; j++) PB[i] += Hk[i][j] * Bd[j];
-        bpb += Bd[i] * PB[i];
-      }
-      for (uint8_t j = 0; j < 4; j++) {
-        float s = 0;
-        for (uint8_t i = 0; i < 4; i++) s += PB[i] * Ad[i][j];
-        K[j] = s / (r + bpb);
-      }
+      // H is P (also the MPC's terminal cost).
+      if (P) *P = H;
+      Vec4 PB = H * Bd;
+      Eigen::Map<Vec4> gain(K);
+      gain = (Ad.transpose() * PB) / (r + Bd.dot(PB));
       return true;
     }
   }
@@ -249,6 +164,7 @@ void lqrZeroShifted(float delta) {
 
 // Called when balancing starts: start from where the robot is.
 void lqrReset() {
+  mpcReset();
   refPosition = position = 0;
   speedCmd = groundSpeed;
   dobRate = pitchRate / 57.29578f;
@@ -292,12 +208,9 @@ float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleErro
   angleError = x[2] * 57.29578f;
 
   float a = 0;
-#if BOARD_ESP32
   if (cfg.controller == CONTROLLER_MPC) {
-    a = mpcAccel(x, groundSpeed, referenceSpeed);
-  } else
-#endif
-  {
+    a = mpcAccel(x, referenceSpeed);
+  } else {
     for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];
   }
   a = constrain(a, -cfg.lqrAccelLimit, cfg.lqrAccelLimit);

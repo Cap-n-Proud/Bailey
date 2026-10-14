@@ -14,7 +14,7 @@ import { Gamepad, ABS, BTN } from '../src/gamepad.js';
 import { FakeGamepad } from './fixtures/fake-gamepad.js';
 
 const SIM_DIR = path.resolve(SERVER_DIR, '../bailey_FW/test');
-const SIM = path.join(SIM_DIR, 'sim_stepper');
+const SIM = path.join(SIM_DIR, 'sim');
 const quiet = { debug() {}, info() {}, warn() {}, error: console.error };
 
 let bailey, url, logDir, pad, skip = false;
@@ -23,7 +23,7 @@ const clients = [];
 before(async () => {
   try {
     // Always rebuild so the test runs the current firmware.
-    execFileSync('g++', ['-std=c++17', '-O2', '-Istubs', '-DMOTOR_TYPE=2', '-o', 'sim_stepper', 'sim.cpp'], { cwd: SIM_DIR });
+    execFileSync('sh', ['build.sh'], { cwd: SIM_DIR });
   } catch (err) {
     skip = `can't build the simulator: ${err.message}`;
     return;
@@ -80,8 +80,8 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   assert.equal(ui.latest.lqr.length, 0.2);
   await waitFor(() => ui.latest.snapshot && (ui.latest.firmware || ui.latest.snapshot.robot.firmware), 3000, 'firmware info');
   const fw = ui.latest.firmware || ui.latest.snapshot.robot.firmware;
-  assert.equal(fw.Board, 'Mega2560');            // the simulator builds the Mega configuration
-  assert.equal(fw.ControlPeriodUs, '5000');
+  assert.equal(fw.Board, 'ESP32-S3');
+  assert.equal(fw.ControlPeriodUs, '2000');
   assert.ok(ui.latest.lqr.gain[2] < -50, 'LQR pitch gain');
 
   assert.equal((await ask(ui, 'command', { name: 'Motors', value: 1 })).ok, true);

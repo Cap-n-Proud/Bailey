@@ -5,7 +5,7 @@
   "serial": {
     "port": "/dev/ttyACM0",
     "baudRate": 115200,
-    "simCommand": "../bailey_FW/test/sim_stepper live"
+    "simCommand": "../bailey_FW/test/sim live"
   },
   "camera": {
     "enabled": true,

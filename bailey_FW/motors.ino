@@ -22,64 +22,6 @@ static float clampPercent(float v) {
   return v;
 }
 
-#if MOTOR_TYPE == MOTOR_DC
-
-Encoder encoderLeft(PIN_ENC_LEFT_A, PIN_ENC_LEFT_B);
-Encoder encoderRight(PIN_ENC_RIGHT_A, PIN_ENC_RIGHT_B);
-long lastLeftCount = 0, lastRightCount = 0;
-
-void motorsSetup() {
-  pinMode(PIN_LEFT_PWM, OUTPUT);
-  pinMode(PIN_LEFT_IN1, OUTPUT);
-  pinMode(PIN_LEFT_IN2, OUTPUT);
-  pinMode(PIN_RIGHT_PWM, OUTPUT);
-  pinMode(PIN_RIGHT_IN1, OUTPUT);
-  pinMode(PIN_RIGHT_IN2, OUTPUT);
-}
-
-static void driveMotor(uint8_t pwmPin, uint8_t in1, uint8_t in2, float percent, uint8_t minPwm) {
-  percent = clampPercent(percent);
-  if (fabs(percent) < 0.5f) {
-    analogWrite(pwmPin, 0);
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-    return;
-  }
-  // Map 0..100 % onto minPwm..255 so small commands still overcome friction.
-  int pwm = minPwm + (int)(fabs(percent) / 100.0f * (255 - minPwm) + 0.5f);
-  if (pwm > 255) pwm = 255;
-  digitalWrite(in1, percent > 0 ? HIGH : LOW);
-  digitalWrite(in2, percent > 0 ? LOW : HIGH);
-  analogWrite(pwmPin, pwm);
-}
-
-void motorsSet(float left, float right) {
-  driveMotor(PIN_LEFT_PWM, PIN_LEFT_IN1, PIN_LEFT_IN2,
-             cfg.motorLeftInvert ? -left : left, cfg.motorLeftMinimumSpeed);
-  driveMotor(PIN_RIGHT_PWM, PIN_RIGHT_IN1, PIN_RIGHT_IN2,
-             cfg.motorRightInvert ? -right : right, cfg.motorRightMinimumSpeed);
-}
-
-void motorsStop() {
-  motorsSet(0, 0);
-}
-
-void motorsUpdateSpeed(float dt) {
-  long l = encoderLeft.read();
-  long r = encoderRight.read();
-  long dl = l - lastLeftCount;
-  long dr = r - lastRightCount;
-  lastLeftCount = l;
-  lastRightCount = r;
-  if (dt <= 0) return;
-
-  float scale = 100.0f / (cfg.encoderCountsPerSecFull * dt);
-  leftSpeed = (cfg.encoderLeftInvert ? -dl : dl) * scale;
-  rightSpeed = (cfg.encoderRightInvert ? -dr : dr) * scale;
-  updateWheelMotion(dt);
-}
-
-#elif MOTOR_TYPE == MOTOR_STEPPER
 
 // FastAccelStepper generates the step pulses from a hardware timer and ramps
 // the speed with a bounded acceleration, so the motors never get a speed jump
@@ -155,4 +97,3 @@ void motorsUpdateSpeed(float dt) {
   updateWheelMotion(dt);
 }
 
-#endif

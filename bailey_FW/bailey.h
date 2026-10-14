@@ -9,9 +9,11 @@
 #include <stddef.h>
 #include <math.h>
 #include "config.h"
+// Eigen 3.4 for the matrix maths: Arduino library "Eigen" (hideakitai/ArduinoEigen).
+#include <ArduinoEigenDense.h>
 
 #define SETTINGS_MAGIC   0xBA17
-#define SETTINGS_VERSION 5
+#define SETTINGS_VERSION 6
 #define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
 #define EEPROM_BYTES     1024    // ESP32: size of the flash area emulating EEPROM
 #define G_ACC 9.81f              // m/s^2
@@ -44,25 +46,20 @@ struct Settings {
   float Maxthrottle;              // % of full wheel speed at full throttle
 
   // Motors
-  uint8_t motorLeftMinimumSpeed;  // DC: PWM below which the motor does not turn
-  uint8_t motorRightMinimumSpeed;
-  float encoderCountsPerSecFull;  // DC: encoder counts/s at full power (sets the speed scale)
-  float stepperMaxSpeed;          // stepper: steps/s at 100 %
-  float stepperMaxAccel;          // stepper: steps/s^2
-  float stepsPerRev;              // stepper: steps per wheel turn, including microstepping
-  float encoderCountsPerRev;      // DC: encoder counts per wheel turn
+  float stepperMaxSpeed;          // steps/s at 100 %
+  float stepperMaxAccel;          // steps/s^2
+  float stepsPerRev;              // steps per wheel turn, including microstepping
   float wheelDiameter;            // mm
-  // Orientation of IMU, motors and encoders. Fix these instead of rewiring.
+  // Orientation of IMU and motors. Fix these instead of rewiring.
   uint8_t imuAxis;                // gyro axis the robot pitches around: 0 = X, 1 = Y, 2 = Z
   uint8_t imuInvert;              // 1 = pitch reads negative when leaning forward
   uint8_t motorLeftInvert, motorRightInvert;
-  uint8_t encoderLeftInvert, encoderRightInvert;
 
   // Robot model and autotuner
   float pendulumLength;           // m, effective pendulum length the gains were computed for
   float autotuneAmplitude;        // deg, wobble added to the pitch setpoint while measuring
 
-  // Balance controller: 0 = PID cascade, 1 = LQR + disturbance observer (steppers only)
+  // Balance controller: 0 = PID cascade, 1 = LQR + disturbance observer, 2 = MPC
   uint8_t controller;
   // LQR weights: how far each quantity may stray (for a 0.2 m robot; scaled
   // with the pendulum length). Smaller = the controller fights harder for it.
@@ -176,13 +173,16 @@ void autotuneOnFall();
 bool autotuneRunning();
 
 // lqr.ino
-typedef float Mat4[4][4];        // 4x4 matrix, row major (in the header: the Arduino IDE's
-                                 // generated prototypes need it before the .ino files)
+// Matrix types (in the header: the Arduino IDE's generated prototypes need
+// them before the .ino files).
+typedef Eigen::Matrix4f Mat4;
+typedef Eigen::Vector4f Vec4;
 #define CONTROLLER_PID 0
 #define CONTROLLER_LQR 1
-#define CONTROLLER_MPC 2         // ESP32-S3 only (mpc.ino)
+#define CONTROLLER_MPC 2         // mpc.ino
 extern bool lqrWeightsChanged;
 extern float balanceAngle;
+void lqrModel(float L, float dt, Mat4 &Ad, Vec4 &Bd);
 bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P = NULL);
 bool lqrSolveReference();
 void lqrMaintain(bool balancing);
@@ -192,9 +192,34 @@ void lqrReset();
 void lqrZeroShifted(float delta);
 float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleError);
 
-// mpc.ino (ESP32-S3)
-float mpcAccel(const float x[4], float speed, float referenceSpeed);
+// mpc.ino
+#include "src/tinympc/tiny_api.hpp"   // TinyMPC (vendored, see src/tinympc/README.md)
+#ifndef MPC_N
+#define MPC_N 40                 // knot points: plans (MPC_N - 1) * MPC_STEP = 1.17 s ahead
+#endif
+#ifndef MPC_STEP
+#define MPC_STEP 0.03f           // s per plan step (and how often it is re-planned)
+#endif
+// The balance loop asks for a plan from the current state...
+struct MpcRequest {
+  float x0[4];
+  float referenceSpeed;
+  float aMax, vMax;
+  uint32_t at;                   // micros() of x0
+  uint16_t generation;           // see mpcReset
+};
+// ...and the solver (on the other core) hands back the planned states and inputs.
+struct MpcPlan {
+  float x[MPC_N][4];
+  float u[MPC_N - 1];
+  uint32_t at;                   // micros() of x[0]
+  uint16_t iterations, micros;
+  uint16_t generation;
+  bool valid;
+};
+float mpcAccel(const float x[4], float referenceSpeed);
 void mpcStats(uint16_t &iterations, uint16_t &microseconds);
+void mpcReset();
 
 // gains.ino
 float fullSpeedMps();

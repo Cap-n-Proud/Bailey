@@ -94,7 +94,7 @@ export class RobotLink extends EventEmitter {
     this.child = child;
     readline.createInterface({ input: child.stdout }).on('line', (line) => this.emit('line', line));
     child.on('error', (err) => {
-      this.log.error(`sim: ${err.message}. Build it with bailey_FW/test/run_tests.sh`);
+      this.log.error(`sim: ${err.message}. Build it with bailey_FW/test/build.sh`);
       this.setStatus(false, err.message);
     });
     child.on('exit', (code) => {

@@ -122,8 +122,8 @@ function onTelemetry(t) {
   $('pitch').textContent = `${fmt(t.pitch, 2)}°`;
   $('speed').textContent = `${fmt(speed)} %`;
   $('loopTime').textContent = `${t.LoopT} µs`;
-  // Budget: the firmware's control period (5000 µs on the Mega, 2000 µs on the ESP32-S3).
-  const budget = Number(robot.firmware?.ControlPeriodUs) || 5000;
+  // Budget: the firmware's control period (2000 µs).
+  const budget = Number(robot.firmware?.ControlPeriodUs) || 2000;
   $('loopTime').style.color = t.LoopT > budget ? css('--bad') : '';
   $('loopTime').title = `Worst control loop time since the last telemetry; must stay under ${budget} µs`;
   $('wobble').textContent = fmt(t.dISTE, 3);
@@ -151,12 +151,9 @@ function renderFirmware() {
 // ---------- controller ----------
 function renderController() {
   const c = robot.gains?.controller;
-  const isStepper = robot.gains?.OPT === 2;
   $('ctrlLqr').classList.toggle('on', c === 1);
   $('ctrlMpc').classList.toggle('on', c === 2);
   $('ctrlPid').classList.toggle('on', c === 0);
-  $('ctrlLqr').disabled = !isStepper;
-  $('ctrlMpc').disabled = !isStepper || robot.firmware?.Board !== 'ESP32-S3';
   const l = robot.lqr;
   $('lqrInfo').textContent = (c === 1 || c === 2) && l
     ? `K = ${l.gain.map((k) => k.toFixed(1)).join(', ')} for L = ${(l.length * 100).toFixed(1)} cm`
