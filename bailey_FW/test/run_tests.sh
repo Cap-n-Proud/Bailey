@@ -26,7 +26,7 @@ done
 # PID controller is the fallback and is only checked on the simulator above.
 if ./build_mujoco.sh >/dev/null 2>&1; then
   for c in 1 2; do
-    for s in balance push drive fall disturbance kalman limits scaling; do
+    for s in balance push drive fall disturbance kalman limits; do
       printf '== sim_mujoco (controller %s) ' "$c"
       SIM_CONTROLLER=$c ./sim_mujoco $s || fail=1
     done

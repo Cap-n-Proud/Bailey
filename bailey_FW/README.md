@@ -169,8 +169,10 @@ over the same USB cable. If an upload fails (the first time, or after a crash), 
 | 3V3, GND | | MPU-6050 VCC/GND, stepper drivers' logic VDD/GND |
 
 Wiring notes:
-* All signals are 3.3 V. A4988, DRV8825 and TMC2209 driver inputs and the MPU-6050 accept that
-  directly. Never connect a 5 V output to the board's pins.
+* All signals are 3.3 V. DRV8825 and TMC2209 driver inputs and the MPU-6050 accept that
+  directly. An A4988 does only when its logic supply (VDD) is 3.3 V: at VDD 5 V it needs 3.5 V
+  for a high, so power its VDD from the board's 3V3 (on a Big Easy Driver, set its 3.3 V/5 V
+  jumper to 3.3 V). Never connect a 5 V output to the board's pins.
 * The motor power (VMOT) stays on the drivers' own supply, with the grounds connected together.
 * These GPIOs are safe on any ESP32-S3 with quad PSRAM. The pins avoided are:
   * 0, 3, 45 and 46 (boot mode);
@@ -360,6 +362,15 @@ again after a fall.
 
 `test/mujoco_check.py` (needs `pip install mujoco numpy`) checks the simulator's robot model against
 the MuJoCo physics engine.
+
+`test/build_mujoco.sh` (needs `pip install mujoco`) builds `test/sim_mujoco`: the same firmware and
+scenarios, with the robot simulated by MuJoCo instead of the built-in equations. It is a 3D robot
+whose wheels roll on the floor with friction (and can slip), whose body can pitch, roll, turn and
+fall over, and whose steppers are stiff servos following the step rate. `run_tests.sh` runs the LQR
+and MPC scenarios and the autotuner on it when MuJoCo is installed. The PID controller is left out:
+it balances, but rests with a small (~0.2°) wobble on this plant and misses the stopping test.
+The `scaling` scenario also runs only on the built-in plant: its smallest robot (7 cm, 13 mm wheels)
+doesn't balance on MuJoCo's contact model; 0.2-0.45 m robots do.
 
 `test/build_wasm.sh` builds the same simulator as WebAssembly for `test/web/index.html`, an
 interactive page with a side view of the robot, driving, pushes, payload, controller choice and the
