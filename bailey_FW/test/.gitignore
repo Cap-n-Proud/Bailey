@@ -1,2 +1,3 @@
 sim
 *.o
+sim_mujoco

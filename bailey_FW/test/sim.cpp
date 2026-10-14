@@ -54,7 +54,14 @@ SimWire Wire;
 // a the wheels' acceleration relative to the body (what the firmware commands);
 // L and kappa (1 for a cart-pole; ~1.4 for Bailey) are what the autotuner
 // measures, see fallLength() and coupling().
+struct Plant;
+#ifdef SIM_MUJOCO
+static void mujocoStep(Plant &p, double dt, double wl, double wr);
+#endif
+
 struct Plant {
+  static inline int count = 0;
+  int id = ++count;             // a new Plant() means a new robot (the MuJoCo model is rebuilt)
   // Geometry: 94 mm wheels, centre of mass 15 cm above the axle.
   double wheelRadius = 0.047;
   double bodyMass = 1.5;        // kg
@@ -127,6 +134,10 @@ struct Plant {
     ul += al * dt;
     ur += ar * dt;
     double v0 = (vl + vr) / 2;
+#ifdef SIM_MUJOCO
+    (void)al; (void)ar;
+    mujocoStep(*this, dt, stepperLeft->speed * 2 * M_PI / stepsPerRev, stepperRight->speed * 2 * M_PI / stepsPerRev);
+#else
     if (held) {
       // Held in the air / on a stand: the body doesn't move, the wheels spin freely.
       omega = 0;
@@ -148,6 +159,7 @@ struct Plant {
       vl = slip * (ul + r * omega);
       vr = slip * (ur + r * omega);
     }
+#endif
     if (!held) x += (vl + vr) / 2 * dt;
     // MPU-6050 on the body, pitch axis = sensor X, Z up when upright. It measures
     // gravity plus its own acceleration (wheels + rotation of the body), which is
@@ -172,6 +184,10 @@ struct Plant {
     simGyro[2] = raw(noiseDeg * 4 * noise(rng) * gyroLsb);
   }
 };
+
+#ifdef SIM_MUJOCO
+#include "mujoco_plant.h"
+#endif
 
 Plant plant;
 
