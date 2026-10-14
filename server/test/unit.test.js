@@ -4,6 +4,9 @@ import { RobotProtocol, scmd, setGain, sanitizeRaw, tagOf } from '../src/protoco
 import { DriveControl } from '../src/drive.js';
 import { JpegSplitter } from '../src/camera.js';
 import { loadConfig } from '../src/config.js';
+import { Gamepad, findController, driveFrom, parseEvents, encodeEvent, eventSize, ABS, BTN, EV_ABS, EV_KEY } from '../src/gamepad.js';
+import { FakeGamepad } from './fixtures/fake-gamepad.js';
+import path from 'node:path';
 
 const TH = 'TH,yaw,pitch,roll,pitchSpeed,dISTE,leftMotorSpeed,rightMotorSpeed,LoopT,bal';
 const PIDH = 'PIDH,speedPIDKp,speedPIDKi,speedPIDKd,anglePIDConKp,anglePIDConKi,anglePIDConKd,'
@@ -169,5 +172,86 @@ test('camera streams MJPEG to several viewers and stops when nobody watches', as
     assert.equal((await snap.arrayBuffer()).byteLength, 10);
   } finally {
     await bailey.close();
+  }
+});
+
+test('gamepad: input events, sticks and device discovery', () => {
+  // struct input_event is 24 bytes on 64-bit Pi OS, 16 on 32-bit.
+  assert.equal(eventSize('arm64'), 24);
+  assert.equal(eventSize('arm'), 16);
+  for (const size of [16, 24]) {
+    const buf = Buffer.concat([encodeEvent(EV_ABS, ABS.Y, 0, size), encodeEvent(EV_KEY, BTN.SOUTH, 1, size), encodeEvent(EV_ABS, ABS.RX, -3, size)]);
+    assert.deepEqual(parseEvents(buf, size), [
+      { type: EV_ABS, code: ABS.Y, value: 0 }, { type: EV_KEY, code: BTN.SOUTH, value: 1 }, { type: EV_ABS, code: ABS.RX, value: -3 }]);
+  }
+
+  const state = (y, rx, ...buttons) => ({ axes: { [ABS.Y]: y, [ABS.RX]: rx }, buttons: new Set(buttons) });
+  assert.deepEqual(driveFrom(state(128, 128)), { throttle: 0, steer: 0 });
+  assert.deepEqual(driveFrom(state(140, 118)), { throttle: 0, steer: 0 });       // dead zone
+  assert.deepEqual(driveFrom(state(0, 255)), { throttle: 50, steer: 60 });       // up = forward
+  assert.deepEqual(driveFrom(state(255, 0)), { throttle: -50, steer: -60 });
+  assert.deepEqual(driveFrom(state(0, 128, BTN.TR)), { throttle: 100, steer: 0 }); // R1: full speed
+  assert.ok(driveFrom(state(100, 128)).throttle > 0 && driveFrom(state(100, 128)).throttle < 10);
+
+  const pad = new FakeGamepad();
+  try {
+    assert.deepEqual(findController(pad.sysDir, pad.inputDir), {
+      name: 'Wireless Controller', address: 'a4:ae:12:34:56:78',
+      main: path.join(pad.inputDir, 'event5'), sensors: path.join(pad.inputDir, 'event6'),
+    });
+    assert.equal(findController(path.join(pad.root, 'missing'), pad.inputDir), null);
+  } finally {
+    pad.close();
+  }
+});
+
+test('gamepad: drives, presses buttons and stops when the controller goes quiet', async () => {
+  const fake = new FakeGamepad();
+  const gamepad = new Gamepad({}, { log: { info() {}, warn() {} }, sysDir: fake.sysDir, inputDir: fake.inputDir });
+  const seen = [];
+  for (const ev of ['drive', 'command', 'lost', 'status']) gamepad.on(ev, (d) => seen.push([ev, d]));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    gamepad.start();
+    assert.equal(gamepad.status.connected, false);    // devices open, no reports yet
+    fake.connect();
+    await wait(60);
+    assert.equal(gamepad.status.connected, true);
+
+    fake.press(BTN.SOUTH);
+    fake.stick(ABS.Y, 0);
+    await wait(250);
+    assert.deepEqual(seen.find(([e]) => e === 'command'), ['command', { name: 'Motors', value: 1 }]);
+    const drives = seen.filter(([e]) => e === 'drive');
+    assert.deepEqual(drives[0][1], { throttle: 50, steer: 0 });
+    assert.ok(drives.length >= 2, 'repeated while the stick is held');
+
+    fake.stick(ABS.Y, 128);
+    await wait(60);
+    assert.deepEqual(seen.filter(([e]) => e === 'drive').at(-1)[1], { throttle: 0, steer: 0 });
+
+    // Out of range: the reports stop and the controller is dropped quickly.
+    fake.stick(ABS.Y, 0);
+    await wait(60);
+    fake.silence();
+    await wait(700);
+    assert.equal(seen.filter(([e]) => e === 'lost').length, 1);
+    assert.equal(gamepad.status.connected, false);
+    assert.deepEqual(seen.filter(([e]) => e === 'drive').at(-1)[1], { throttle: 50, steer: 0 }, 'no repeats after it was lost');
+
+    // Back in range: connected again, but the stick has to be moved again.
+    const before = seen.length;
+    fake.connect();
+    await wait(200);
+    assert.equal(gamepad.status.connected, true);
+    assert.equal(seen.slice(before).filter(([e]) => e === 'drive').length, 0);
+
+    // Bluetooth drops the device: closed, and found again when it reappears.
+    fake.remove();
+    gamepad.disconnect('ENODEV');
+    assert.equal(gamepad.status.connected, false);
+  } finally {
+    gamepad.stop();
+    fake.close();
   }
 });

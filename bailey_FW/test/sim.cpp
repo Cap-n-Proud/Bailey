@@ -13,10 +13,12 @@
 #include "MPU6050.h"
 #include "FastAccelStepper.h"
 #include <algorithm>
+#ifndef __wasm__
 #include <poll.h>
 #include <unistd.h>
 #include <chrono>
 #include <thread>
+#endif
 #include <random>
 #include <vector>
 
@@ -591,6 +593,7 @@ static bool scenarioDemo() {
 // real time, reads commands on stdin and writes the robot's serial output on
 // stdout. A simulated person holds the robot upright until it starts
 // balancing, and picks it back up 2 s after it falls.
+#ifndef __wasm__
 static bool scenarioLive() {
   remoteConnected = false;        // the server repeats drive commands itself
   received.clear();
@@ -636,6 +639,7 @@ static bool scenarioLive() {
     std::this_thread::sleep_until(next);
   }
 }
+#endif
 
 // Prints the LQR gain solved by the firmware's own Riccati solver (checked
 // against SciPy in tune tooling): ./sim_stepper lqrgain <L> <qp> <qv> <qa> <qr> <r>
@@ -895,6 +899,7 @@ static bool scenarioMotorTest() {
   return check(ok, "MotorTest spins both wheels forward and reports positive speeds");
 }
 
+#ifndef SIM_NO_MAIN
 int main(int argc, char **argv) {
   struct { const char *name; bool (*fn)(); } scenarios[] = {
     { "balance", scenarioBalance },   { "push", scenarioPush },
@@ -920,3 +925,4 @@ int main(int argc, char **argv) {
   printf("unknown scenario %s\n", argv[1]);
   return 2;
 }
+#endif

@@ -30,6 +30,12 @@ The web UI
   * **Calibrate zero**, **Motor test**, **Save to EEPROM** and **Load defaults**.
   * **Pendulum length**, if you've measured it.
   * The gains, editable in real units.
+* **PS4/PS5 controller** (Bluetooth, paired with `install/pair-gamepad.sh`):
+  * left stick up/down drives at up to 50 %, or 100 % while R1 is held;
+  * right stick steers;
+  * ✕ turns the motors on; ○ or PS turns them off.
+
+  The header shows `pad: connected` while it is connected.
 * **Events** and a **console** showing the raw serial traffic, where you can type `SCMD` / `READ`
   commands.
 * **Raspberry Pi:** temperature, load and addresses; recording telemetry to CSV (in
@@ -39,6 +45,11 @@ Safety: the browser repeats joystick commands 10 times a second while you drive.
 arriving, the server and then the firmware stop the robot:
 * the server stops it after 0.6 s (browser tab hidden, phone locked, Wi-Fi lost);
 * the firmware stops it after 1 s if the Pi itself dies.
+
+The controller's motion sensors report hundreds of times a second while it is connected. If they
+go quiet for 0.5 s (out of range, flat battery), the server treats the controller as lost and the
+robot stops. It doesn't wait for Bluetooth to notice, which can take up to 20 s. When the
+controller comes back, the sticks must be moved again before the robot drives.
 
 There is no login. Anyone on the robot's network can drive it, so keep it on a network you trust.
 
@@ -62,8 +73,11 @@ not in git), for example:
 | `camera.width/height/fps/quality` | 640×480, 15, 70 | MJPEG |
 | `telemetry.logDir` | `~/bailey-logs` | |
 | `system.allowShutdown` | true | reboot/shutdown buttons |
+| `gamepad.enabled` | true | PS4/PS5 controller |
+| `gamepad.maxThrottle` / `maxSteer` | 50, 60 | % at full stick (R1: throttle 100 %) |
+| `gamepad.deadZone` | 0.1 | fraction of the stick travel ignored around the centre |
 
-Flags: `--sim`, `--port <n>`, `--serial <device>`, `--no-camera`.
+Flags: `--sim`, `--port <n>`, `--serial <device>`, `--no-camera`, `--no-gamepad`.
 
 Code
 ----
@@ -78,13 +92,14 @@ Code
 | `src/camera.js` | `rpicam-vid` MJPEG to browsers |
 | `src/telemetryLog.js` | CSV recording |
 | `src/system.js` | Pi stats, shutdown/reboot |
+| `src/gamepad.js` | PS4/PS5 controller, read from `/dev/input` (no native modules) |
 | `public/` | the web UI: plain HTML/CSS/JS, no build step, works without internet |
 | `test/` | unit tests and end-to-end tests against the firmware simulator |
 
 What changed from the old server
 --------------------------------
 
-The old server (`server/app`, `server/wwwroot`) needed Node 5-era packages:
+The old server (`server/app`, `server/wwwroot`, removed; still in the git history) needed Node 5-era packages:
 * socket.io 1, serialport 2;
 * node-opencv, which doesn't build on any current Node or Raspberry Pi OS.
 

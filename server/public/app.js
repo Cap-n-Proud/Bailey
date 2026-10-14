@@ -45,6 +45,15 @@ function renderLink() {
   el.className = 'chip ' + (l.connected ? 'ok' : 'bad');
 }
 
+function renderGamepad(g) {
+  const el = $('gamepad');
+  el.hidden = !g?.enabled;
+  if (!g?.enabled) return;
+  el.textContent = g.connected ? 'pad: connected' : 'pad: —';
+  el.title = g.connected ? `${g.name} ${g.address || ''}`.trim() : 'No PS4/PS5 controller (pair it with install/pair-gamepad.sh)';
+  el.className = 'chip ' + (g.connected ? 'ok' : '');
+}
+
 function renderState() {
   const s = robot.telemetry?.state ?? '—';
   const el = $('state');
@@ -392,6 +401,7 @@ socket.on('snapshot', (s) => {
   $('console').replaceChildren();
   s.console.forEach(addConsole);
   renderLink();
+  renderGamepad(s.gamepad);
   renderGains();
   renderAutotune();
   renderCamera(s.camera);
@@ -405,6 +415,7 @@ socket.on('gains', (g) => { robot.gains = g.gains; renderGains(); });
 socket.on('lqr', (l) => { robot.lqr = l; renderController(); });
 socket.on('firmware', (f) => { robot.firmware = f; renderFirmware(); });
 socket.on('link', (l) => { robot.link = l; renderLink(); });
+socket.on('gamepad', renderGamepad);
 socket.on('autotune', (a) => {
   if (a.phase !== robot.autotune.phase) phaseStarted = Date.now();
   robot.autotune = a;
