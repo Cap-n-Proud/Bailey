@@ -99,7 +99,7 @@ Code
 What changed from the old server
 --------------------------------
 
-The old server (`server/app`, `server/wwwroot`) needed Node 5-era packages:
+The old server (`server/app`, `server/wwwroot`, removed; still in the git history) needed Node 5-era packages:
 * socket.io 1, serialport 2;
 * node-opencv, which doesn't build on any current Node or Raspberry Pi OS.
 
