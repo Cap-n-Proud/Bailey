@@ -14,6 +14,7 @@
 //     camera    { status, error }
 //     system    Pi temperature, load, memory, addresses (every 3 s)
 //     logging   { active, file, rows }
+//     gamepad   { enabled, connected, name, address } PS4/PS5 controller (see gamepad.js)
 //   client -> server (all take an ack callback: { ok, error })
 //     drive     { throttle, steer }  -100..100, repeat while held (see drive.js)
 //     set       { name, value }      a gain in real units or another setting
@@ -31,6 +32,7 @@ import { RobotLink } from './robotLink.js';
 import { DriveControl } from './drive.js';
 import { TelemetryLog } from './telemetryLog.js';
 import { Camera } from './camera.js';
+import { Gamepad } from './gamepad.js';
 import * as system from './system.js';
 import { SERVER_DIR } from './config.js';
 
@@ -38,7 +40,7 @@ const VERSION = '2.0.0';
 const MAX_EVENTS = 100;
 const MAX_CONSOLE = 300;
 
-export function createApp(config, { log = console, link: linkOverride } = {}) {
+export function createApp(config, { log = console, link: linkOverride, gamepad: gamepadOverride } = {}) {
   const app = express();
   const httpServer = http.createServer(app);
   const io = new SocketServer(httpServer);
@@ -46,6 +48,7 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
   const link = linkOverride || new RobotLink(config.serial, { serverDir: SERVER_DIR, log });
   const camera = new Camera(config.camera, { log });
   const telemetryLog = new TelemetryLog(config.telemetry.logDir);
+  const gamepad = gamepadOverride || new Gamepad(config.gamepad, { log });
 
   // Latest known robot state, for clients that connect later.
   const robot = {
@@ -82,6 +85,18 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
 
   const drive = new DriveControl((line) => {
     try { send(line); } catch { /* not connected: the firmware stops by itself */ }
+  });
+
+  // --- Gamepad ---
+  gamepad.on('drive', ({ throttle, steer }) => drive.set('gamepad', throttle, steer));
+  gamepad.on('command', ({ name, value }) => {
+    if (name === 'Motors' && value === 0) drive.stop();
+    try { send(scmd(name, value)); } catch { /* not connected */ }
+  });
+  gamepad.on('lost', () => drive.release('gamepad'));
+  gamepad.on('status', (s) => {
+    io.emit('gamepad', s);
+    pushEvent('event', s.connected ? `gamepad connected: ${s.name}` : 'gamepad disconnected');
   });
 
   function loggingStatus() {
@@ -202,6 +217,7 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
       system: system.stats(),
       allowShutdown: config.system.allowShutdown,
       pidScale: PID_SCALE,
+      gamepad: gamepad.status,
     });
 
     socket.on('drive', handler(({ throttle, steer } = {}) => drive.set(socket.id, throttle, steer)));
@@ -252,14 +268,17 @@ export function createApp(config, { log = console, link: linkOverride } = {}) {
     io,
     link,
     camera,
+    gamepad,
     robot,
     start(port = config.http.port) {
       link.start();
+      gamepad.start();
       return new Promise((resolve) => httpServer.listen(port, () => resolve(httpServer.address().port)));
     },
     async close() {
       clearInterval(systemTimer);
       clearInterval(loggingTimer);
+      gamepad.stop();
       drive.stop();
       telemetryLog.stop();
       camera.stop();

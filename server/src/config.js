@@ -5,6 +5,7 @@
 //   --port <n>       HTTP port
 //   --serial <dev>   serial device, e.g. /dev/ttyUSB0
 //   --no-camera      don't start the camera
+//   --no-gamepad     don't look for a PS4/PS5 controller
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,6 +41,7 @@ export function loadConfig(argv = process.argv.slice(2), dir = SERVER_DIR) {
     const a = argv[i];
     if (a === '--sim') flags.serial = { port: 'sim' };
     else if (a === '--no-camera') flags.camera = { enabled: false };
+    else if (a === '--no-gamepad') flags.gamepad = { enabled: false };
     else if (a === '--port') flags.http = { port: Number(argv[++i]) };
     else if (a === '--serial') flags.serial = { port: argv[++i] };
     else throw new Error(`unknown option ${a}`);

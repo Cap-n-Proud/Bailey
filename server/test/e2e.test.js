@@ -10,12 +10,14 @@ import { execFileSync } from 'node:child_process';
 import { io as connect } from 'socket.io-client';
 import { createApp } from '../src/app.js';
 import { loadConfig, SERVER_DIR } from '../src/config.js';
+import { Gamepad, ABS, BTN } from '../src/gamepad.js';
+import { FakeGamepad } from './fixtures/fake-gamepad.js';
 
 const SIM_DIR = path.resolve(SERVER_DIR, '../bailey_FW/test');
 const SIM = path.join(SIM_DIR, 'sim_stepper');
 const quiet = { debug() {}, info() {}, warn() {}, error: console.error };
 
-let bailey, url, logDir, skip = false;
+let bailey, url, logDir, pad, skip = false;
 const clients = [];
 
 before(async () => {
@@ -29,7 +31,9 @@ before(async () => {
   logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bailey-'));
   const config = loadConfig(['--sim', '--no-camera']);
   config.telemetry.logDir = logDir;
-  bailey = createApp(config, { log: quiet });
+  pad = new FakeGamepad();
+  const gamepad = new Gamepad(config.gamepad, { log: quiet, sysDir: pad.sysDir, inputDir: pad.inputDir });
+  bailey = createApp(config, { log: quiet, gamepad });
   const port = await bailey.start(0);
   url = `http://localhost:${port}`;
 });
@@ -38,6 +42,7 @@ after(async () => {
   // Also the ones a failed test didn't get to close: they would keep reconnecting.
   for (const c of clients) c.disconnect();
   if (bailey) await bailey.close();
+  if (pad) pad.close();
   if (logDir) fs.rmSync(logDir, { recursive: true, force: true });
 });
 
@@ -97,6 +102,32 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   await waitFor(() => Math.abs(speedOf(watcher.latest.telemetry)) < 3, 10000, 'the robot to stop');
   assert.equal(watcher.latest.telemetry.state, 'BAL');
   watcher.disconnect();
+});
+
+test('a PS4 controller drives the robot and stops it when out of range', async (t) => {
+  if (skip) return t.skip(skip);
+  const ui = client();
+  await waitFor(() => ui.latest.snapshot, 3000, 'snapshot');
+  assert.equal(ui.latest.snapshot.gamepad.connected, false);
+  pad.connect();
+  await waitFor(() => ui.latest.gamepad?.connected, 3000, 'gamepad connected');
+  assert.equal(ui.latest.gamepad.name, 'Wireless Controller');
+
+  pad.press(BTN.EAST);                                          // ○: motors off
+  await waitFor(() => ui.latest.telemetry?.state === 'OFF', 3000, 'motors off');
+  pad.press(BTN.SOUTH);                                         // ✕: motors on
+  await waitFor(() => ui.latest.telemetry?.state === 'BAL', 8000, 'balancing');
+
+  pad.send([1, BTN.TR, 1], [3, ABS.Y, 0]);                      // R1 + left stick fully up
+  await new Promise((r) => setTimeout(r, 3000));
+  assert.ok(speedOf(ui.latest.telemetry) > 10, `drives forward (speed ${speedOf(ui.latest.telemetry)})`);
+
+  // Out of range with the stick still held: the robot must stop by itself.
+  pad.silence();
+  await waitFor(() => ui.latest.gamepad && !ui.latest.gamepad.connected, 2000, 'gamepad lost');
+  await waitFor(() => Math.abs(speedOf(ui.latest.telemetry)) < 3, 10000, 'the robot to stop');
+  assert.equal(ui.latest.telemetry.state, 'BAL');
+  ui.disconnect();
 });
 
 test('gains, console, recording and HTTP endpoints', async (t) => {

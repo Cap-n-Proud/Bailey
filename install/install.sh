@@ -15,7 +15,7 @@ sed -n '/<<"EOT"/,/^EOT/p' "$REPO/install/ASCII_art.txt" 2>/dev/null | sed '1d;$
 
 echo "== System packages"
 sudo apt-get update
-sudo apt-get install -y git curl ca-certificates rpicam-apps g++
+sudo apt-get install -y git curl ca-certificates rpicam-apps g++ bluez
 
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
   echo "== Node.js $NODE_MAJOR (NodeSource)"
@@ -23,8 +23,8 @@ if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split("."
   sudo apt-get install -y nodejs
 fi
 
-echo "== Access to the Arduino's serial port and the camera"
-sudo usermod -aG dialout,video "$USER_NAME"
+echo "== Access to the robot's serial port, the camera and a Bluetooth controller"
+sudo usermod -aG dialout,video,input "$USER_NAME"
 
 echo "== Server dependencies"
 (cd "$REPO/server" && npm ci --omit=dev)
@@ -59,3 +59,4 @@ echo
 echo "Done. Open http://${IP:-<pi address>}:54321"
 echo "Logs: journalctl -u bailey -f"
 echo "If this was the first install, log out and in again (or reboot) for the serial port permission."
+echo "PS4/PS5 controller: ./install/pair-gamepad.sh"

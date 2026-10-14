@@ -18,6 +18,12 @@
   "telemetry": {
     "logDir": "~/bailey-logs"
   },
+  "gamepad": {
+    "enabled": true,
+    "maxThrottle": 50,
+    "maxSteer": 60,
+    "deadZone": 0.1
+  },
   "system": {
     "allowShutdown": true
   }
