@@ -1,8 +1,10 @@
 Bailey firmware
 ===============
 
-Firmware for the Bailey two-wheeled self-balancing robot: an Arduino Mega 2560 does the balancing
-and drives the motors (steppers by default), using the MPU-6050 on the IMU board. A Raspberry Pi
+Firmware for the Bailey two-wheeled self-balancing robot: a microcontroller does the balancing and
+drives the motors (steppers by default), using the MPU-6050 on the IMU board. It runs on the
+**ESP32-S3** (recommended, e.g. the Waveshare ESP32-S3-Pico) or the original **Arduino Mega 2560**;
+the board is detected when compiling. A Raspberry Pi
 runs the Node.js server in `server/` (web UI, video) and talks to the Arduino over USB serial at 115200 baud.
 
 Version 2.0 is a rewrite. Why the previous firmware never balanced:
@@ -30,21 +32,79 @@ Structure
 | --- | --- |
 | `config.h` | Build-time options: motor type (`MOTOR_STEPPER` default, or `MOTOR_DC`), pins, IMU address, loop rate |
 | `bailey.h` | `Settings` (everything tunable, stored in EEPROM), `Pid`, prototypes |
-| `bailey_FW.ino` | `setup()`, `loop()`, state machine and the 200 Hz balance loop |
-| `imu.ino` | MPU-6050 read + complementary filter, any mounting orientation, zero offset |
+| `bailey_FW.ino` | `setup()`, `loop()`, state machine and the balance loop (500 Hz ESP32-S3, 200 Hz Mega) |
+| `imu.ino` | MPU-6050 read + Kalman filter (pitch and gyro bias), any mounting orientation, zero offset |
+| `lqr.ino` | LQR controller (Riccati equation solved on the board) and disturbance observer |
+| `mpc.ino` | Model predictive control (ESP32-S3 only) |
 | `motors.ino` | Steppers via FastAccelStepper, or DC motors + encoders |
 | `comms.ino` | Serial commands, telemetry, PID/SYS lines |
 | `autotune.ino` | Autotuner: measures pendulum length and IMU offset while balancing |
-| `gains.ino` | Gains from the pendulum length (physical units, scaled by dynamic similarity) |
+| `gains.ino` | PID gains from the pendulum length (physical units, scaled by dynamic similarity) |
 | `settings.ino` | Defaults, EEPROM load/save with checksum |
 | `test/` | PC simulator: builds the real firmware against a physics model (not part of the sketch) |
 
-Control loop (200 Hz):
+Control loop (500 Hz on the ESP32-S3, 200 Hz on the Mega). There are three controllers, selected
+with `SCMD controller <n>` or in the web UI:
+* **1 = LQR**, the default on steppers;
+* **2 = MPC**, ESP32-S3 only;
+* **0 = PID**, always used with DC motors.
 
 ```
-throttle -> speed setpoint (ramped) -> [speed PID] -> pitch setpoint -> [angle PID] -(+ feedforward)-> motors
-                                          ^ wheel speed (encoders)        ^ pitch (IMU)
+LQR (steppers):
+  gyro + accelerometer -> [Kalman] -> pitch, pitch rate (bias-corrected)
+  pitch, rate, wheel acceleration -> [disturbance observer] -> balance angle
+  throttle -> speed/position reference (ramped)
+  a = -K · [position error, speed error, pitch - balance angle, pitch rate] -> integrate -> stepper speed
+
+PID (both):
+  throttle -> speed setpoint (ramped) -> [speed PID] -> pitch setpoint -> [angle PID] -(+ feedforward)-> motors
 ```
+
+**LQR** (`lqr.ino`) treats the robot as an inverted pendulum on wheels whose acceleration it commands
+directly; steppers do exactly what they're told. It weighs position, speed, pitch and pitch rate
+together and finds the gain that keeps them small for the least effort. The trade-off is set by the
+`lqrMax*` settings: how far each quantity may stray, given for a 0.2 m robot. The Riccati equation is
+solved on the Arduino at boot, or when a weight changes with the motors off; it takes about 0.1 s of
+float math. The gain is then rescaled instantly to the measured pendulum length (exact by dynamic
+similarity), so autotune can apply it mid-balance. The solver matches SciPy to 1e-4 (`test/`, `lqrsolver`).
+
+The **disturbance observer** compares the gyro with what the model predicts for the commanded
+acceleration. It works out the angle the robot actually balances at, and LQR regulates around that:
+- a payload or a shifted battery is absorbed;
+- an IMU zero error is absorbed;
+- a constant push is absorbed;
+- the robot holds its position instead of creeping.
+
+In the simulator, a payload shift that made the robot creep 3 m without the observer moves it 7 mm
+with it. The estimate is the telemetry field `balAngle`.
+
+**MPC** (`mpc.ino`, ESP32-S3) uses the same model, state and observer as LQR. Every control step it
+plans 1.2 s ahead (40 steps of 30 ms) around the motors' hard limits: acceleration up to
+`lqrAccelLimit` and wheel speed up to full speed. It applies the first step of the plan.
+
+It is *pre-stabilised*: the plan is "LQR plus corrections", and with the LQR's Riccati solution as
+the cost of where the plan ends, the cost is exact. So with no limit in sight the corrections are 0
+and it is exactly LQR; it only acts differently near a limit. Planning around the LQR-stabilised
+robot also keeps the long-horizon numbers well conditioned in 32-bit floats; planning the raw
+unstable robot 1.5 s ahead does not. The limits are stiff penalties, minimised with FISTA (at most
+30 iterations of one forward and one adjoint pass, about 0.5-1 ms per step on the ESP32-S3).
+
+**Honest result:** in the simulator it is never worse than LQR, but it is also no better. Both
+survive the same hardest push (limited by the motors' acceleration), and both drive at full
+throttle with reversals. What made fast driving safe were two reference changes that apply to
+LQR and MPC alike:
+* while driving, track speed rather than a position the robot has fallen behind;
+* cap the speed target at `MAX_DRIVE_SPEED` (90 %) of full speed, so there is room left to tilt
+  back and brake.
+
+MPC is there to experiment with: for example with harder limits (lower `lqrAccelLimit` or
+`stepperMaxSpeed`), or as a base for obstacle or slope constraints. Watch **Loop time** in the UI:
+it must stay under 2000 µs.
+
+The **Kalman filter** (`imu.ino`) estimates pitch and gyro bias together. It keeps learning the bias,
+which drifts as the chip warms up, so pitch doesn't creep and the pitch rate the controllers use is
+bias-free. The accelerometer is ignored while the robot accelerates hard, when its reading isn't
+gravity.
 
 Signs everywhere: pitch > 0 = leaning forward, motor command > 0 = drive forward, wheel speed > 0
 = moving forward. Fix the hardware to match with the `*Invert` / `imuAxis` settings, not in code.
@@ -53,6 +113,48 @@ State machine: `OFF` (Motors 0) -> `WAIT` (Motors 1, waiting until the robot is 
 of upright for 0.3 s) -> `BAL` -> `FALL` (tilt > `fallAngle`, motors cut) -> `WAIT` again once
 picked up. Telemetry field `bal` is the state: 0 OFF, 1 WAIT, 2 BAL, 3 FALL.
 
+Boards
+------
+
+| | ESP32-S3 (Waveshare ESP32-S3-Pico) | Arduino Mega 2560 |
+| --- | --- | --- |
+| CPU | 2 × 240 MHz with hardware floating point | 16 MHz, floating point in software |
+| Balance loop | 500 Hz | 200 Hz |
+| Logic level | 3.3 V | 5 V |
+| Settings storage | flash, emulating EEPROM | EEPROM |
+| Motors | steppers | steppers or DC motors with encoders |
+
+Both talk to the Pi over USB as `/dev/ttyACM0`. On the ESP32-S3 that's its own USB port, which
+needs **USB CDC On Boot = Enabled** when compiling; `install/flash-firmware.sh` sets it. The
+ESP32-S3 needs no programmer: it uploads over the same USB cable. If an upload fails (the first
+time, or after a crash), hold **BOOT**, press **RESET** (or replug the cable), release BOOT and
+upload again.
+
+**ESP32-S3-Pico wiring** (GPIO numbers, set in `config.h`):
+
+| Signal | GPIO | Connect to |
+| --- | --- | --- |
+| Left STEP / DIR | 11 / 12 | left stepper driver STEP / DIR |
+| Right STEP / DIR | 13 / 14 | right stepper driver STEP / DIR |
+| Stepper ENABLE | 17 | EN of both drivers (active low) |
+| I2C SDA / SCL | 15 / 16 | MPU-6050 SDA / SCL |
+| 3V3, GND | | MPU-6050 VCC/GND, stepper drivers' logic VDD/GND |
+
+Wiring notes:
+* All signals are 3.3 V. A4988, DRV8825 and TMC2209 driver inputs and the MPU-6050 accept that
+  directly. Never connect a 5 V output to the board's pins.
+* The motor power (VMOT) stays on the drivers' own supply, with the grounds connected together.
+* These GPIOs are safe on any ESP32-S3 with quad PSRAM. The pins avoided are:
+  * 0, 3, 45 and 46 (boot mode);
+  * 19 and 20 (USB);
+  * 26-32 (flash/PSRAM);
+  * 21 (the Pico's RGB LED).
+* Check the GPIO numbers against the pinout card that comes with the board. If you'd rather use
+  other pins, any free GPIO works for every signal; change them in `config.h`.
+
+**Mega wiring:** STEP 6 (left) and 7 (right), DIR 9 and 10, shared active-low ENABLE on 12,
+MPU-6050 on SDA/SCL (20/21).
+
 Libraries
 ---------
 
@@ -60,7 +162,7 @@ Install from the Arduino Library Manager (versions the firmware was built with):
 
 * **MPU6050** by Electronic Cats, v1.4.5. This is the maintained continuation of Jeff Rowberg's
   i2cdevlib and includes `I2Cdev`. It replaces FreeIMU, which has not been maintained since about
-  2014. Balancing needs only the pitch angle and rate, which a complementary filter on the raw
+  2014. Balancing needs only the pitch angle and rate, which a Kalman filter on the raw
   gyro and accelerometer provides with less delay than a full AHRS. The magnetometer and
   barometer are not used.
 * **FastAccelStepper** by gin66, v2.0.0 (steppers). Generates step pulses from a hardware timer
@@ -69,16 +171,17 @@ Install from the Arduino Library Manager (versions the firmware was built with):
   it misbehaves, v1.4.0 has the same API for everything used here.
 * **Encoder** by Paul Stoffregen, v1.4.4 (DC motors only; the current git master does not compile
   for AVR).
-* Wire, EEPROM (bundled with the Arduino AVR core).
+* Wire, EEPROM (bundled with the board cores).
 
-Wiring for steppers is in `config.h`: STEP 6 (left) and 7 (right), DIR 9 and 10, shared active-low
-ENABLE on 12, MPU-6050 on SDA/SCL (20/21 on the Mega). For DC motors, set `MOTOR_TYPE` to
-`MOTOR_DC`.
+Board cores: **esp32** by Espressif (Arduino-ESP32 3.x; board "ESP32S3 Dev Module", USB CDC On Boot
+Enabled, 16 MB flash, QSPI PSRAM), or **Arduino AVR Boards** for the Mega. `install/flash-firmware.sh`
+installs everything and uploads from the Pi: `./install/flash-firmware.sh esp32s3` or `... mega`.
+For DC motors (Mega only), set `MOTOR_TYPE` to `MOTOR_DC`.
 
 Bring-up (do it in this order)
 ------------------------------
 
-Send the commands from the web UI console or a serial monitor at 115200 baud. Settings changed
+Send the commands from the web UI console or a serial monitor (115200 baud on the Mega). Settings changed
 with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 
 1. **Turn on debug output:** `SCMD SerialDebug 1` prints a readable status line twice a second.
@@ -111,13 +214,25 @@ with `SCMD` are only kept over a reset after `SCMD SaveCfg 1`.
 Keep the robot still while it boots: the gyro bias is measured then.
 
 If it falls the same way every time, re-check steps 2-4: a sign error makes it run away instantly.
-If it oscillates fast, lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
+If it oscillates fast: with LQR lower `lqrMaxAccel` (effort becomes more expensive, so the
+controller is gentler); with PIDs lower `anglePIDConKp` or `anglePIDConKd`. If it drifts and has to keep
 driving to stay up, redo step 3.
 
 Default gains
 -------------
 
-**Steppers.** The gains live in physical units in `gains.ino` and are converted using
+**Steppers, LQR (default).** The settings were chosen in the simulator over robots of 12-30 cm, IMU
+offsets of ±2° and up to 4× the expected sensor noise, then checked against gyro drift, payload
+shifts and robots of 7-45 cm:
+* `lqrMaxPosition` 0.1 m, `lqrMaxSpeed` 0.5 m/s, `lqrMaxAngle` 4.5°, `lqrMaxRate` 10°/s,
+  `lqrMaxAccel` 2.7 m/s²;
+* `dobBandwidth` 2 rad/s;
+* Kalman: `kalmanQAngle` 0.002, `kalmanQBias` 0.003, `kalmanR` 3.
+
+The gain only depends on the robot through L, and the autotuner measures L. Before autotuning, the
+defaults (for L = 0.2 m) balance robots from 7 cm to 45 cm in the simulator.
+
+**Steppers, PID.** The gains live in physical units in `gains.ino` and are converted using
 `wheelDiameter`, `stepsPerRev` and `stepperMaxSpeed`. Changing those settings recomputes them, so
 you can change microstepping or wheels without retuning. They depend on one property of the robot,
 its effective pendulum length L: how high the mass sits above the axle, which sets how fast it
@@ -159,7 +274,7 @@ three phases:
      acceleration;
    * the wheel acceleration is delayed by 5 ms to line up with the MPU-6050's internal filter;
    * every signal gets the same 3 Hz low-pass.
-3. **Verify (6 s).** It applies gains for the measured L and sets the measured offset as the new
+3. **Verify (6 s).** It applies gains for the measured L (LQR gain rescaled, or PID gains) and sets the measured offset as the new
    zero, then scores the wobble again.
 
 The result is **rejected and everything restored** if:
@@ -197,12 +312,18 @@ Commands
 | `motorLeftMinimumSpeed`, `motorRightMinimumSpeed` | PWM 0-254 |
 | `imuAxis` (1/2), `imuInvert`, `motorLeftInvert`, `motorRightInvert`, `encoderLeftInvert`, `encoderRightInvert` | 0/1 |
 | `debugSampleRate` (ms), `telemetryPeriod` (ms) | integer |
+| `controller` | 1 = LQR + disturbance observer (steppers), 2 = MPC (ESP32-S3), 0 = PID. Change with the motors off |
+| `lqrMaxPosition` (m), `lqrMaxSpeed` (m/s), `lqrMaxAngle` (°), `lqrMaxRate` (°/s), `lqrMaxAccel` (m/s²) | LQR weights for a 0.2 m robot; applied when the motors are off |
+| `lqrAccelLimit` (m/s²), `dobBandwidth` (rad/s for a 0.2 m robot, 0 = observer off) | plain number |
+| `kalmanQAngle`, `kalmanQBias`, `kalmanR` | Kalman filter noise settings, plain numbers |
 | `Motors`, `AUTOTUNE`, `SerialDebug` | 0/1 |
 | `Throttle`, `Steer` | -100..100. Not echoed. A non-zero value must be repeated at least every second (the web server sends them at 10 Hz); otherwise both drop back to 0, so a lost connection can't leave the robot driving |
 | `CalibrateZero 1`, `MotorTest <-100..100>`, `pendulumLength <mm>` (steppers: gains for that length), `SaveCfg 1`, `Load_def 1`, `E_EEPROM 1`, `resetPID 1` | actions |
 
 Lines from the robot start with a tag: `T`/`TH` telemetry, `PID`/`PIDH`, `SYS`/`SYSH`, `EV` events,
-`AT` autotune progress/result, `TEST` motor test, `***` config dump, `E` errors.
+`AT` autotune progress/result, `LQR` gain (`LQR,k_pos,k_speed,k_pitch,k_rate,L`, also with
+`READ LQRParamTX`), `TEST` motor test, `***` config dump, `E` errors. Telemetry includes `balAngle`,
+the disturbance observer's balance angle.
 
 Simulator
 ---------

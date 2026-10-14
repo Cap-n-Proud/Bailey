@@ -36,7 +36,6 @@
 #define MAX_LENGTH   0.60f
 #define MAX_DISAGREE 0.25f      // the two L estimates must agree within 25 %
 #define MIN_R2       0.6f       // fraction of pitch'' the model must explain
-#define G 9.81f
 
 static AutotunePhase phase = AT_IDLE;
 static float phaseTime = 0;
@@ -114,6 +113,7 @@ static void setZero(float zero) {
   cfg.calibratedZeroAngle = zero;
   pitch -= delta;
   speedPID.integral -= delta;
+  lqrZeroShifted(delta);
 }
 
 static void restoreTuning() {
@@ -225,7 +225,7 @@ static void finishMeasure() {
     if (p1 <= 0 || p3 >= 0) {
       problem = "model signs wrong: check imuInvert and motor directions";
     } else {
-      fitL1 = G / p1;
+      fitL1 = G_ACC / p1;
       fitL2 = -1 / p3;
       fitL = sqrt(fitL1 * fitL2);
       fitOffset = -p2 / p1 * 57.29578f;

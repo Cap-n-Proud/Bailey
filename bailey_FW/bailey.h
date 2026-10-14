@@ -11,8 +11,10 @@
 #include "config.h"
 
 #define SETTINGS_MAGIC   0xBA17
-#define SETTINGS_VERSION 4
+#define SETTINGS_VERSION 5
 #define SETTINGS_ADDRESS 32      // EEPROM address of the stored Settings
+#define EEPROM_BYTES     1024    // ESP32: size of the flash area emulating EEPROM
+#define G_ACC 9.81f              // m/s^2
 
 // Everything that can be changed at runtime with "SCMD <name> <value>".
 // Plain old data only, so it can be stored in EEPROM byte by byte.
@@ -59,6 +61,23 @@ struct Settings {
   // Robot model and autotuner
   float pendulumLength;           // m, effective pendulum length the gains were computed for
   float autotuneAmplitude;        // deg, wobble added to the pitch setpoint while measuring
+
+  // Balance controller: 0 = PID cascade, 1 = LQR + disturbance observer (steppers only)
+  uint8_t controller;
+  // LQR weights: how far each quantity may stray (for a 0.2 m robot; scaled
+  // with the pendulum length). Smaller = the controller fights harder for it.
+  float lqrMaxPosition;           // m
+  float lqrMaxSpeed;              // m/s
+  float lqrMaxAngle;              // deg
+  float lqrMaxRate;               // deg/s
+  float lqrMaxAccel;              // m/s^2, how much effort is acceptable
+  float lqrAccelLimit;            // m/s^2, hard limit on the commanded acceleration
+  float dobBandwidth;             // rad/s, disturbance observer speed for a 0.2 m robot (0 = off)
+
+  // Kalman filter for pitch and gyro bias (imu.ino)
+  float kalmanQAngle;             // deg^2/s, how fast the true pitch can drift from the gyro integral
+  float kalmanQBias;              // (deg/s)^2/s, how fast the gyro bias can change
+  float kalmanR;                  // deg^2, accelerometer pitch noise while balancing
 
   // Telemetry / debug
   uint8_t debug;                  // 1 = human-readable debug output instead of telemetry
@@ -155,6 +174,27 @@ float autotuneExcitation();
 void autotuneStep(float dt, float angleError);
 void autotuneOnFall();
 bool autotuneRunning();
+
+// lqr.ino
+typedef float Mat4[4][4];        // 4x4 matrix, row major (in the header: the Arduino IDE's
+                                 // generated prototypes need it before the .ino files)
+#define CONTROLLER_PID 0
+#define CONTROLLER_LQR 1
+#define CONTROLLER_MPC 2         // ESP32-S3 only (mpc.ino)
+extern bool lqrWeightsChanged;
+extern float balanceAngle;
+bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P = NULL);
+bool lqrSolveReference();
+void lqrMaintain(bool balancing);
+bool lqrReady();
+void LQRParamTX();
+void lqrReset();
+void lqrZeroShifted(float delta);
+float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleError);
+
+// mpc.ino (ESP32-S3)
+float mpcAccel(const float x[4], float speed, float referenceSpeed);
+void mpcStats(uint16_t &iterations, uint16_t &microseconds);
 
 // gains.ino
 float fullSpeedMps();

@@ -4,6 +4,7 @@
 //   TH/T      telemetry header / values     PIDH/PID  gains header / values
 //   SYSH/SYS  system header / values        EV        event (state change, ...)
 //   AT        autotune phase / result       TEST      motor test result
+//   LQR       LQR gain K (4) and the pendulum length it is for
 //   SCMD ...  command echo                  ***       configuration dump
 //   E, ...    error
 // Pi -> robot: "SCMD <name> <value>" and "READ <what>".
@@ -96,6 +97,11 @@ export class RobotProtocol {
           };
         }
         return { type: 'autotune', phase: fields[1] };
+
+      case 'LQR': {
+        const [k0, k1, k2, k3, length] = fields.slice(1).map(Number);
+        return { type: 'lqr', gain: [k0, k1, k2, k3], length };
+      }
 
       case 'TEST':
         return { type: 'motorTest', left: Number(fields[1]), right: Number(fields[2]) };

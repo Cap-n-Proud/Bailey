@@ -69,8 +69,15 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   if (skip) return t.skip(skip);
   const ui = client();
   await waitFor(() => ui.latest.snapshot, 3000, 'snapshot');
-  await waitFor(() => ui.latest.telemetry?.state === 'OFF' && ui.latest.gains, 6000, 'telemetry and gains');
+  await waitFor(() => ui.latest.telemetry?.state === 'OFF' && ui.latest.gains && ui.latest.lqr, 6000, 'telemetry, gains and LQR gain');
   assert.equal(ui.latest.gains.gains.anglePIDConKp, 12);
+  assert.equal(ui.latest.gains.gains.controller, 1);              // steppers balance with LQR
+  assert.equal(ui.latest.lqr.length, 0.2);
+  await waitFor(() => ui.latest.snapshot && (ui.latest.firmware || ui.latest.snapshot.robot.firmware), 3000, 'firmware info');
+  const fw = ui.latest.firmware || ui.latest.snapshot.robot.firmware;
+  assert.equal(fw.Board, 'Mega2560');            // the simulator builds the Mega configuration
+  assert.equal(fw.ControlPeriodUs, '5000');
+  assert.ok(ui.latest.lqr.gain[2] < -50, 'LQR pitch gain');
 
   assert.equal((await ask(ui, 'command', { name: 'Motors', value: 1 })).ok, true);
   await waitFor(() => ui.latest.telemetry?.state === 'BAL', 8000, 'balancing');
@@ -131,6 +138,7 @@ test('autotune measures the simulated robot', async (t) => {
   assert.equal(result.accepted, true);
   assert.ok(Math.abs(result.length - 0.2) < 0.03, `L = ${result.length} (true 0.20)`);
   await waitFor(() => Math.abs(ui.latest.gains?.gains.calibratedZeroAngle - result.zero) < 0.02, 3000, 'zero applied');
+  await waitFor(() => Math.abs(ui.latest.lqr?.length - result.length) < 0.002, 3000, 'LQR gain rescaled to the measured length');
 
   assert.equal((await ask(ui, 'command', { name: 'Motors', value: 0 })).ok, true);
   await waitFor(() => ui.latest.telemetry?.state === 'OFF', 3000, 'motors off');

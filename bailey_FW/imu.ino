@@ -1,4 +1,12 @@
-// IMU: MPU-6050 read directly at the control rate, fused with a complementary filter.
+// IMU: MPU-6050 read directly at the control rate, fused with a Kalman filter.
+//
+// The filter's state is [pitch, gyro bias]. Each step it predicts pitch from
+// the gyro minus the estimated bias, then corrects both with the tilt the
+// accelerometer measures. So, unlike a complementary filter, it keeps learning
+// the gyro bias (which drifts as the board warms up) instead of leaving a small
+// standing pitch error, and pitchRate is bias-corrected for the controllers.
+// kalmanR sets how much the accelerometer is trusted: while balancing it is
+// disturbed by the robot's own acceleration, so it is trusted only slowly.
 //
 // The balance axis is the gyro axis the robot pitches around (imuAxis: 0 = X,
 // 1 = Y, 2 = Z of the sensor). The tilt from the accelerometer is measured in the
@@ -10,10 +18,11 @@ MPU6050 mpu(MPU_ADDRESS);
 #define GYRO_SCALE   (1.0f / 65.5f)    // +/-500 deg/s range: LSB per deg/s
 #define ACCEL_LSB_PER_G   8192.0f              // +/-4 g range
 #define ACCEL_GATE        0.15f                // ignore the accelerometer beyond 1 g +/- 15 %
-#define FILTER_TAU   0.5f              // s, complementary filter time constant
-
-static float tiltEstimate = 0;          // deg, wrapped to +/-180
+static float kalmanPitch = 0;           // deg, wrapped to +/-180
+static float kalmanBias = 0;            // deg/s
+static float kalmanP[2][2];             // covariance of [pitch, bias]
 static bool imuStarted = false;
+float imuGyroBias = 0;                  // deg/s, Kalman estimate (telemetry)
 
 static float wrap180(float a) {
   while (a > 180) a -= 360;
@@ -42,7 +51,7 @@ void imuRead(float dt) {
   uint8_t u = (r + 1) % 3, v = (r + 2) % 3;
   float sign = cfg.imuInvert ? -1.0f : 1.0f;
 
-  float rate = sign * g[r] * GYRO_SCALE;
+  float rawRate = sign * g[r] * GYRO_SCALE;
 
   float accTilt = sign * atan2((float)a[u], (float)a[v]) * 57.29578f;
 
@@ -53,19 +62,42 @@ void imuRead(float dt) {
   bool accelUsable = fabs(norm - 1.0f) < ACCEL_GATE;
 
   if (!imuStarted) {
-    tiltEstimate = accTilt;
+    kalmanPitch = accTilt;
+    kalmanBias = 0;
+    kalmanP[0][0] = 10;   kalmanP[0][1] = 0;    // start: pitch roughly known,
+    kalmanP[1][0] = 0;    kalmanP[1][1] = 1;    // bias within ~1 deg/s
     imuStarted = true;
   }
-  // Gyro for fast changes, accelerometer to remove drift. Work on the wrapped
-  // difference so it doesn't jump when the tilt passes +/-180.
-  float k = accelUsable ? dt / (FILTER_TAU + dt) : 0;
-  tiltEstimate += rate * dt;
-  tiltEstimate += k * wrap180(accTilt - tiltEstimate);
-  tiltEstimate = wrap180(tiltEstimate);
 
-  pitchRaw = tiltEstimate;
+  // Predict: integrate the bias-corrected gyro.
+  float rate = rawRate - kalmanBias;
+  kalmanPitch += rate * dt;
+  float (&P)[2][2] = kalmanP;
+  P[0][0] += dt * (dt * P[1][1] - P[0][1] - P[1][0] + cfg.kalmanQAngle);
+  P[0][1] -= dt * P[1][1];
+  P[1][0] -= dt * P[1][1];
+  P[1][1] += cfg.kalmanQBias * dt;
+
+  // Correct with the accelerometer's pitch, when it can be trusted. Work on the
+  // wrapped difference so nothing jumps when the pitch passes +/-180.
+  if (accelUsable) {
+    float S = P[0][0] + cfg.kalmanR;
+    float K0 = P[0][0] / S, K1 = P[1][0] / S;
+    float y = wrap180(accTilt - kalmanPitch);
+    kalmanPitch += K0 * y;
+    kalmanBias += K1 * y;
+    float p00 = P[0][0], p01 = P[0][1];
+    P[0][0] -= K0 * p00;
+    P[0][1] -= K0 * p01;
+    P[1][0] -= K1 * p00;
+    P[1][1] -= K1 * p01;
+  }
+  kalmanPitch = wrap180(kalmanPitch);
+
+  pitchRaw = kalmanPitch;
   pitch = wrap180(pitchRaw - cfg.calibratedZeroAngle);
-  pitchRate = rate;
+  pitchRate = rawRate - kalmanBias;
+  imuGyroBias = kalmanBias;
 
   // For telemetry only: heading from the gyro axis that is vertical when upright,
   // and side tilt from the accelerometer.

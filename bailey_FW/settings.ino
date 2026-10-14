@@ -60,10 +60,32 @@ void loadDefaultSettings() {
 
   cfg.autotuneAmplitude = 0.7;
 
+#if MOTOR_TYPE == MOTOR_STEPPER
+  cfg.controller = CONTROLLER_LQR;
+#else
+  cfg.controller = CONTROLLER_PID;
+#endif
+  // LQR weights, observer and Kalman settings: chosen in the simulator over
+  // robots of 12-30 cm, IMU offsets of +/-2 deg and up to 4x the expected
+  // noise, then checked for gyro drift, payload shifts and 7-45 cm robots.
+  cfg.lqrMaxPosition = 0.1;
+  cfg.lqrMaxSpeed = 0.5;
+  cfg.lqrMaxAngle = 4.5;
+  cfg.lqrMaxRate = 10;
+  cfg.lqrMaxAccel = 2.7;
+  cfg.lqrAccelLimit = 6;           // below the steppers' ~7 m/s^2 (stepperMaxAccel)
+  cfg.dobBandwidth = 2;
+
+  cfg.kalmanQAngle = 0.002;
+  cfg.kalmanQBias = 0.003;
+  cfg.kalmanR = 3;
+
   cfg.debug = 0;
   cfg.debugSampleRate = 500;
   cfg.telemetryPeriod = 100;   // 10 Hz: ~60 bytes per line, fine at 115200 baud
 }
+
+static_assert(SETTINGS_ADDRESS + sizeof(Settings) <= EEPROM_BYTES, "Settings don't fit in EEPROM_BYTES");
 
 static uint16_t settingsCrc(const Settings &s) {
   // Fletcher-16 over everything except the crc field itself.
@@ -92,9 +114,15 @@ void saveSettings() {
   cfg.version = SETTINGS_VERSION;
   cfg.crc = settingsCrc(cfg);
   EEPROM.put(SETTINGS_ADDRESS, cfg);   // put() only writes bytes that changed
+#if BOARD_ESP32
+  EEPROM.commit();                     // the ESP32 writes its flash copy only on commit
+#endif
 }
 
 void eraseSettings() {
   for (unsigned int i = 0; i < sizeof(Settings); i++)
     EEPROM.write(SETTINGS_ADDRESS + i, 0xFF);
+#if BOARD_ESP32
+  EEPROM.commit();
+#endif
 }

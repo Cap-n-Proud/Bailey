@@ -24,6 +24,8 @@ typedef uint8_t byte;
 #define F(s) ((const __FlashStringHelper *)(s))
 class __FlashStringHelper;
 inline int strcmp_P(const char *a, const char *b) { return strcmp(a, b); }
+inline int strncmp_P(const char *a, const char *b, size_t n) { return strncmp(a, b, n); }
+#define sq(x) ((x) * (x))
 
 template <class T, class L, class H>
 inline T constrain(T x, L lo, H hi) { return x < lo ? (T)lo : (x > hi ? (T)hi : x); }
