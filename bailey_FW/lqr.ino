@@ -1,23 +1,29 @@
 // LQR balance controller with a disturbance observer (steppers).
 //
-// Model: the robot is an inverted pendulum on a cart whose acceleration we
-// command directly (steppers follow the commanded speed exactly):
+// Model: an inverted pendulum whose wheels' acceleration we command directly
+// (steppers follow the commanded speed exactly):
 //
 //   state x = [position (m), speed (m/s), pitch (rad), pitch rate (rad/s)]
-//   input a = wheel acceleration (m/s^2)
-//   p' = v,  v' = a,  pitch' = rate,  rate' = (g * pitch - a) / L + d
+//   input a = wheel acceleration (m/s^2, relative to the body: the steppers'
+//             housings are bolted to it)
+//   p' = v,  v' = a,  pitch' = rate,  rate' = (g * pitch - kappa * a) / L + d
 //
-// L is the effective pendulum length (measured by the autotuner) and d an
-// unknown disturbance: centre of mass not where the IMU zero says, a payload,
-// someone leaning on it. The LQR gain K minimises the sum over time of
+// L (how fast it falls) and kappa (how hard the wheels' acceleration tips it)
+// are measured by the autotuner; d is an unknown disturbance: centre of mass
+// not where the IMU zero says, a payload, someone leaning on it. A cart-pole
+// has kappa = 1. A real two-wheeler has more, because the wheels turn with the
+// body and the motors push back on it: about 1.4 for Bailey. (Found by checking
+// the simulator against the MuJoCo physics engine, test/mujoco_check.py; with
+// kappa = 1 the model was 55 % off in how fast the robot falls.) The LQR gain K minimises the sum over time of
 // x' Q x + R a^2, with Q and R set from "how far each quantity may stray"
 // (lqrMax* settings, given for a 0.2 m robot).
 //
 // The Riccati equation is solved on the board (Eigen, a few ms) for the
-// reference length: at boot, or when a weight changes while the motors are off. Robots that differ only in L behave identically with time
-// scaled by sqrt(L / g), so the gain for the measured L follows exactly by
-// rescaling (K_pos ~ 1/L, K_speed ~ 1/sqrt(L), K_pitch const, K_rate ~ sqrt(L)),
-// which is instant and safe to do while balancing.
+// reference length and the current kappa: at boot, when a weight changes while
+// the motors are off, or when kappa changes (autotune). Robots that differ only
+// in L behave identically with time scaled by sqrt(L / g), so the gain for the
+// measured L follows exactly by rescaling (K_pos ~ 1/L, K_speed ~ 1/sqrt(L),
+// K_pitch const, K_rate ~ sqrt(L)), which is instant and safe while balancing.
 //
 // The disturbance observer estimates d from the difference between the
 // measured pitch rate and what the model predicts, and turns it into the
@@ -39,6 +45,7 @@
 static float lqrKRef[4];          // gain solved for LQR_REF_LENGTH
 static float lqrK[4];             // a = -(K0 p + K1 v + K2 pitch + K3 rate), for lqrLength
 static float lqrLength = 0;       // L lqrK is scaled for
+static float lqrCoupling = 0;     // kappa lqrKRef was solved for
 static bool lqrSolved = false;
 bool lqrWeightsChanged = true;    // set when an lqrMax* setting changes
 float balanceAngle = 0;           // deg, from the disturbance observer (telemetry)
@@ -51,45 +58,49 @@ static float refPosition = 0, position = 0, speedCmd = 0;   // m, m, m/s
 // ---------- model and Riccati solver (Eigen) ----------
 
 // Exact discretisation for a step dt (the input is held constant over the step).
-// With w = sqrt(g / L) the pitch obeys pitch'' = w^2 pitch - a / L, whose
+// With w = sqrt(g / L) the pitch obeys pitch'' = w^2 pitch - kappa a / L, whose
 // solution over one step is in cosh/sinh; the cart part is plain kinematics.
-void lqrModel(float L, float dt, Mat4 &Ad, Vec4 &Bd) {
+void lqrModel(float L, float kappa, float dt, Mat4 &Ad, Vec4 &Bd) {
   float w = sqrt(G_ACC / L), c = cosh(w * dt), s = sinh(w * dt);
   Ad << 1, dt, 0, 0,
         0, 1,  0, 0,
         0, 0,  c, s / w,
         0, 0,  w * s, c;
-  Bd << dt * dt / 2, dt, -(c - 1) / G_ACC, -w * s / G_ACC;
+  Bd << dt * dt / 2, dt, -kappa * (c - 1) / G_ACC, -kappa * w * s / G_ACC;
 }
 
 // Solves the discrete algebraic Riccati equation
 //   P = A'PA - A'PB (r + B'PB)^-1 B'PA + Q
 // with the structure-preserving doubling algorithm (Chu, Fan, Lin, Wang 2004:
 // converges in ~20 iterations, where plain Riccati iteration needs thousands at
-// a 2 ms step), then K = (r + B'PB)^-1 B'PA. Matrix algebra by Eigen; the
-// solution is checked against SciPy's solve_discrete_are in the simulator tests.
+// a 2 ms step), then K = (r + B'PB)^-1 B'PA. Matrix algebra by Eigen (fixed
+// size, no heap). Benchmarked against the old hand-written code and PX4's
+// matrix library: without SIMD, as on the ESP32-S3, this is the fastest of the
+// three. The solution is checked against SciPy's solve_discrete_are in the
+// simulator tests.
 // Returns false if it didn't converge.
-bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P) {
+bool lqrSolve(float L, float kappa, float dt, const float qDiag[4], float r, float K[4], Mat4 *P) {
   Mat4 Ad;
   Vec4 Bd;
-  lqrModel(L, dt, Ad, Bd);
-  const Mat4 I = Mat4::Identity();
+  lqrModel(L, kappa, dt, Ad, Bd);
   Mat4 A = Ad;
   Mat4 G = Bd * Bd.transpose() / r;
   Mat4 H = Eigen::Map<const Vec4>(qDiag).asDiagonal();
+  Eigen::Matrix<float, 4, 8> rhs, sol;
 
   for (uint8_t it = 0; it < 40; it++) {
-    Eigen::PartialPivLU<Mat4> W(I + G * H);
-    if (!(W.rcond() > 1e-7f)) return false;
-    Mat4 WA = W.solve(A);                                   // W^-1 A
-    Mat4 Gn = G + A * W.solve(G) * A.transpose();           // G + A W^-1 G A'
-    Mat4 Hn = H + A.transpose() * H * WA;                   // H + A' H W^-1 A
-    Hn = (Hn + Hn.transpose()) / 2;                         // keep P exactly symmetric
-    A = A * WA;                                             // A W^-1 A
+    // One LU factorisation of W = I + G H, solved for [A G] at once.
+    Mat4 W = G * H;
+    W.diagonal().array() += 1;
+    rhs << A, G;
+    sol = W.partialPivLu().solve(rhs);                      // [W^-1 A, W^-1 G]
+    Mat4 Hn = H + A.transpose() * H * sol.leftCols<4>();    // H + A' H W^-1 A
+    G += A * sol.rightCols<4>() * A.transpose();            // G + A W^-1 G A'
+    A = A * sol.leftCols<4>();                              // A W^-1 A
+    Hn = (Hn + Hn.transpose()) * 0.5f;                      // keep P exactly symmetric
     float change = (Hn - H).cwiseAbs().sum(), size = Hn.cwiseAbs().sum();
-    G = Gn;
     H = Hn;
-    if (!H.allFinite()) return false;
+    if (!(size < 1e30f)) return false;                      // diverged (also catches NaN)
     if (change <= 1e-6f * size) {
       // H is P (also the MPC's terminal cost).
       if (P) *P = H;
@@ -113,11 +124,13 @@ bool lqrSolveReference() {
   float r = 1 / (cfg.lqrMaxAccel * cfg.lqrMaxAccel);
   float K[4];
   lqrWeightsChanged = false;
-  if (!lqrSolve(LQR_REF_LENGTH, CONTROL_PERIOD_US * 1e-6f, q, r, K)) {
+  float kappa = cfg.pendulumCoupling;
+  if (!lqrSolve(LQR_REF_LENGTH, kappa, CONTROL_PERIOD_US * 1e-6f, q, r, K)) {
     Serial.println(F("E, LQR: Riccati equation did not converge, keeping the old gain"));
     return false;
   }
   memcpy(lqrKRef, K, sizeof(K));
+  lqrCoupling = kappa;
   lqrSolved = true;
   lqrLength = 0;                  // rescale on next use
   return true;
@@ -142,7 +155,11 @@ bool lqrReady() {
 
 // Called every control step while idle and before balancing.
 void lqrMaintain(bool balancing) {
+  // The solve takes well under a control period, but a new weight could make
+  // a much harder controller: those wait until the motors are off. A new kappa
+  // (autotune) is the same robot better described: applied right away.
   if ((!lqrSolved || lqrWeightsChanged) && !balancing) lqrSolveReference();
+  else if (lqrSolved && lqrCoupling != cfg.pendulumCoupling) lqrSolveReference();
   if (lqrSolved && lqrLength != cfg.pendulumLength) lqrScale();
 }
 
@@ -186,7 +203,7 @@ float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleErro
   if (cfg.dobBandwidth > 0) {
     // Like the gains, the observer's speed scales with the robot's own (sqrt(g / L)).
     float w = cfg.dobBandwidth * sqrt(LQR_REF_LENGTH / L);
-    dobRate += (G_ACC * (theta - dobAngle) - wheelAccel) / L * dt;
+    dobRate += (G_ACC * (theta - dobAngle) - cfg.pendulumCoupling * wheelAccel) / L * dt;
     float e = rate - dobRate;
     dobRate += 2 * w * dt * e;
     dobAngle -= L / G_ACC * w * w * dt * e;
@@ -213,6 +230,7 @@ float lqrStep(float dt, float referenceSpeed, float extraPitch, float &angleErro
   } else {
     for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];
   }
+  a += autotuneAccelExcitation();
   a = constrain(a, -cfg.lqrAccelLimit, cfg.lqrAccelLimit);
 
   // Integrate into the speed for the steppers (they follow it exactly).

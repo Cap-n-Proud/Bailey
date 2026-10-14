@@ -89,11 +89,12 @@ export class RobotProtocol {
 
       case 'AT':
         if (fields[1] === 'RESULT') {
-          const [accepted, L, L1, L2, zero, r2, before, after] = fields.slice(2).map(Number);
+          // AT,RESULT,<accepted>,<L>,<kappa>,<zero>,<R²>,<wobble before>,<after>
+          const [accepted, L, coupling, zero, r2, before, after] = fields.slice(2).map(Number);
           return {
             type: 'autotune',
             phase: 'RESULT',
-            result: { accepted: accepted === 1, length: L, lengthFromGravity: L1, lengthFromAccel: L2, zero, r2, before, after },
+            result: { accepted: accepted === 1, length: L, coupling, zero, r2, before, after },
           };
         }
         return { type: 'autotune', phase: fields[1] };

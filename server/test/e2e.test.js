@@ -75,9 +75,9 @@ test('the robot balances, drives and stops from the web API', async (t) => {
   const ui = client();
   await waitFor(() => ui.latest.snapshot, 3000, 'snapshot');
   await waitFor(() => ui.latest.telemetry?.state === 'OFF' && ui.latest.gains && ui.latest.lqr, 6000, 'telemetry, gains and LQR gain');
-  assert.equal(ui.latest.gains.gains.anglePIDConKp, 12);
+  assert.equal(ui.latest.gains.gains.anglePIDConKp, 10.89);   // defaults: L 0.3 m, kappa 1.35
   assert.equal(ui.latest.gains.gains.controller, 1);              // steppers balance with LQR
-  assert.equal(ui.latest.lqr.length, 0.2);
+  assert.equal(ui.latest.lqr.length, 0.3);
   await waitFor(() => ui.latest.snapshot && (ui.latest.firmware || ui.latest.snapshot.robot.firmware), 3000, 'firmware info');
   const fw = ui.latest.firmware || ui.latest.snapshot.robot.firmware;
   assert.equal(fw.Board, 'ESP32-S3');
@@ -167,7 +167,9 @@ test('autotune measures the simulated robot', async (t) => {
   const result = await waitFor(() => ui.latest.autotune?.phase === 'IDLE' && ui.latest.autotune.result, 45000, 'autotune result');
   assert.deepEqual(phases.slice(0, 3), ['BASELINE', 'MEASURE', 'VERIFY']);
   assert.equal(result.accepted, true);
-  assert.ok(Math.abs(result.length - 0.2) < 0.03, `L = ${result.length} (true 0.20)`);
+  // The simulated robot is Bailey: L = 0.31 m, kappa = 1.38 (bailey_FW/test/sim.cpp, Plant).
+  assert.ok(Math.abs(result.length - 0.31) < 0.04, `L = ${result.length} (true 0.31)`);   // +/- 13 %
+  assert.ok(Math.abs(result.coupling - 1.38) < 0.2, `kappa = ${result.coupling} (true 1.38)`);
   await waitFor(() => Math.abs(ui.latest.gains?.gains.calibratedZeroAngle - result.zero) < 0.02, 3000, 'zero applied');
   await waitFor(() => Math.abs(ui.latest.lqr?.length - result.length) < 0.002, 3000, 'LQR gain rescaled to the measured length');
 

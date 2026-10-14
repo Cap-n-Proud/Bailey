@@ -159,8 +159,8 @@ export function createApp(config, { log = console, link: linkOverride, gamepad: 
         if (msg.phase === 'RESULT') {
           const r = msg.result;
           pushEvent('autotune', r.accepted
-            ? `accepted: L = ${(r.length * 100).toFixed(1)} cm, zero ${r.zero.toFixed(2)}°, wobble ${r.before} -> ${r.after}`
-            : `rejected (L ${r.lengthFromGravity} / ${r.lengthFromAccel}, R² ${r.r2})`);
+            ? `accepted: L = ${(r.length * 100).toFixed(1)} cm, κ = ${r.coupling.toFixed(2)}, zero ${r.zero.toFixed(2)}°, wobble ${r.before} -> ${r.after}`
+            : `rejected (L ${r.length}, κ ${r.coupling}, R² ${r.r2})`);
         }
         io.emit('autotune', robot.autotune);
         break;

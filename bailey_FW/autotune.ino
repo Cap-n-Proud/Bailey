@@ -1,14 +1,17 @@
 // Autotuner: measures the robot while it balances and computes its gains.
 //
-// The robot is an inverted pendulum on a speed-controlled cart:
+// The robot is an inverted pendulum driven by its wheels' acceleration (lqr.ino):
 //
-//   pitch'' = (g / L) * (pitchMeasured - offset) - (1 / L) * wheelAcceleration
+//   pitch'' = (g / L) * (pitchMeasured - offset) - (kappa / L) * wheelAcceleration
 //
-// L (effective pendulum length) and the IMU offset are the only unknowns, so
-// they are fitted by least squares on  pitch'' = p1 * pitch + p2 + p3 * accel:
-//   L = g / p1 = -1 / p3  (two independent estimates: they must agree)
-//   offset = -p2 / p1
-// Gains then follow from L (gains.ino) and the offset becomes the new zero.
+// L (how fast it falls), kappa (how hard the wheels tip it) and the IMU offset
+// are the unknowns, fitted by least squares on  pitch'' = p1 * pitch + p2 + p3 * accel:
+//   L = g / p1,  kappa = -p3 * L,  offset = -p2 / p1
+// kappa is 1 for a cart-pole and a bit more for a real two-wheeler (the wheels
+// turn with the body and the motors push back on it), so a kappa far from that
+// means the measurement went wrong (wheels slipping, steps skipped).
+// Gains then follow from L and kappa (gains.ino, lqr.ino) and the offset
+// becomes the new zero.
 //
 // "SCMD AUTOTUNE 1" while balancing, throttle and steer at 0. About 30 s:
 //   1. BASELINE  6 s  balance on the current gains, score the wobble
@@ -21,7 +24,7 @@
 // above ABORT_ERROR abort the run and restore the previous settings.
 //
 // Progress is reported as "AT,<phase>" lines and the outcome as
-// "AT,RESULT,<accepted>,<L>,<L from g/p1>,<L from -1/p3>,<offset>,<R^2>,<score before>,<score after>".
+// "AT,RESULT,<accepted>,<L>,<kappa>,<offset>,<R^2>,<score before>,<score after>".
 
 
 #define BASELINE_S   6.0f
@@ -32,9 +35,11 @@
 #define FIT_PITCH_TAU 5.0f      // s, see fitPitch
 #define ABORT_ERROR  6.0f       // deg
 #define MIN_LENGTH   0.05f      // m, plausible range of L
-#define MAX_LENGTH   0.60f
-#define MAX_DISAGREE 0.25f      // the two L estimates must agree within 25 %
+#define MAX_LENGTH   0.80f
+#define MIN_COUPLING 0.85f      // plausible range of kappa (physically >= 1, plus fit noise)
+#define MAX_COUPLING 2.5f
 #define MIN_R2       0.6f       // fraction of pitch'' the model must explain
+#define AT_ACCEL_DITHER 0.4f    // m/s^2, see autotuneAccelExcitation
 
 static AutotunePhase phase = AT_IDLE;
 static float phaseTime = 0;
@@ -43,7 +48,7 @@ static float score = 0, scoreTime = 0, baselineScore = 0;
 
 // Settings changed by the autotuner, restored if the result is rejected.
 struct SavedTuning {
-  float conKp, conKi, conKd, aggKp, aggKi, aggKd, speedKp, speedKi, length, zero;
+  float conKp, conKi, conKd, aggKp, aggKi, aggKd, speedKp, speedKi, length, coupling, zero;
 };
 static SavedTuning saved;
 
@@ -102,6 +107,7 @@ static void saveTuning() {
   saved.speedKp = cfg.speedPIDKp;
   saved.speedKi = cfg.speedPIDKi;
   saved.length = cfg.pendulumLength;
+  saved.coupling = cfg.pendulumCoupling;
   saved.zero = cfg.calibratedZeroAngle;
 }
 
@@ -125,6 +131,7 @@ static void restoreTuning() {
   cfg.speedPIDKp = saved.speedKp;
   cfg.speedPIDKi = saved.speedKi;
   cfg.pendulumLength = saved.length;
+  cfg.pendulumCoupling = saved.coupling;
   setZero(saved.zero);
 }
 
@@ -181,15 +188,24 @@ float autotuneExcitation() {
   return cfg.autotuneAmplitude * s / 1.7f;
 }
 
-static void report(bool accepted, float L, float L1, float L2, float offset, float r2, float after) {
+// A second, independent wobble added straight to the wheels' acceleration
+// (LQR and MPC), in m/s^2. Through the pitch setpoint alone the controller
+// makes the acceleration follow the pitch, so the two are nearly collinear and
+// L and kappa are hard to tell apart; this keeps them distinguishable.
+float autotuneAccelExcitation() {
+  if (phase != AT_MEASURE) return 0;
+  float t = phaseTime;
+  float s = sin(2 * (float)M_PI * 2.3f * t + 0.5f) + 0.8f * sin(2 * (float)M_PI * 3.9f * t + 2.0f);
+  return AT_ACCEL_DITHER * s / 1.8f;
+}
+
+static void report(bool accepted, float L, float kappa, float offset, float r2, float after) {
   Serial.print(F("AT,RESULT,"));
   Serial.print(accepted ? 1 : 0);
   Serial.print(',');
   Serial.print(L, 3);
   Serial.print(',');
-  Serial.print(L1, 3);
-  Serial.print(',');
-  Serial.print(L2, 3);
+  Serial.print(kappa, 3);
   Serial.print(',');
   Serial.print(offset, 2);
   Serial.print(',');
@@ -201,7 +217,7 @@ static void report(bool accepted, float L, float L1, float L2, float offset, flo
 }
 
 // Last fit, kept for the report after verification.
-static float fitL, fitL1, fitL2, fitOffset, fitR2;
+static float fitL, fitKappa, fitOffset, fitR2;
 
 static void finishMeasure() {
   // Least squares of pitch'' on (pitch, accel) with intercept, from the covariances.
@@ -211,7 +227,7 @@ static void finishMeasure() {
   float det = s00 * s11 - s01 * s01;
   float corr2 = (s00 > 0 && s11 > 0) ? s01 * s01 / (s00 * s11) : 1;
 
-  fitL = fitL1 = fitL2 = fitOffset = fitR2 = 0;
+  fitL = fitKappa = fitOffset = fitR2 = 0;
   const char *problem = NULL;
   if (samples < 100 || det <= 0 || corr2 > 0.98f) {
     problem = "not enough motion to measure";
@@ -224,12 +240,11 @@ static void finishMeasure() {
     if (p1 <= 0 || p3 >= 0) {
       problem = "model signs wrong: check imuInvert and motor directions";
     } else {
-      fitL1 = G_ACC / p1;
-      fitL2 = -1 / p3;
-      fitL = sqrt(fitL1 * fitL2);
+      fitL = G_ACC / p1;
+      fitKappa = -p3 * fitL;
       fitOffset = -p2 / p1 * 57.29578f;
-      if (fabs(fitL1 / fitL2 - 1) > MAX_DISAGREE)
-        problem = "length estimates disagree: wheels slipping or skipping steps?";
+      if (fitKappa < MIN_COUPLING || fitKappa > MAX_COUPLING)
+        problem = "wheel coupling implausible: wheels slipping or skipping steps?";
       else if (fitL < MIN_LENGTH || fitL > MAX_LENGTH)
         problem = "length out of range";
       else if (fitR2 < MIN_R2)
@@ -238,11 +253,12 @@ static void finishMeasure() {
   }
 
   if (problem) {
-    report(false, fitL, fitL1, fitL2, fitOffset, fitR2, 0);
+    report(false, fitL, fitKappa, fitOffset, fitR2, 0);
     autotuneAbort(problem);
     return;
   }
 
+  cfg.pendulumCoupling = fitKappa;
   applyGainsForLength(fitL);
   setZero(fitOffset);
   PIDParamTX();
@@ -253,7 +269,7 @@ static void finishVerify() {
   float after = score / scoreTime;
   // Allow for run-to-run noise: reject only if clearly worse.
   bool better = after <= baselineScore * 1.5f + 0.01f;
-  report(better, fitL, fitL1, fitL2, fitOffset, fitR2, after);
+  report(better, fitL, fitKappa, fitOffset, fitR2, after);
   if (!better) {
     autotuneAbort("new gains balance worse");
     return;

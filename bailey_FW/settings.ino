@@ -16,20 +16,24 @@ void loadDefaultSettings() {
 
   cfg.imuAxis = 0;
   cfg.imuInvert = 0;
+  cfg.imuAccelCompensation = 1;   // see imu.ino
   cfg.motorLeftInvert = 0;
   cfg.motorRightInvert = 0;
 
   // Gains, checked in the simulator (test/) over a range of body heights, IMU
   // offsets and noise. The autotuner replaces the guessed
   // pendulum length with a measured one.
-  cfg.pendulumLength = 0.20;
+  // Bailey's geometry (94 mm wheels, centre of mass about 15 cm up) gives
+  // about L = 0.3 m and kappa = 1.4; the autotuner measures both.
+  cfg.pendulumLength = 0.30;
+  cfg.pendulumCoupling = 1.35;
   applyGainsForLength(cfg.pendulumLength);
   cfg.TriggerAngleAggressive = 8.0;
   cfg.anglePIDOutputLimit = 100;
   cfg.calibratedZeroAngle = 0;
   cfg.fallAngle = 40;
 
-  cfg.speedPIDMoveFactor = 0.7;
+  cfg.speedPIDMoveFactor = 1.0;
   cfg.speedPIDOutputLimit = 6;
   cfg.speedFilter = 0.15;
   cfg.speedRamp = 30;

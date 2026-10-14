@@ -54,10 +54,11 @@ test('events, errors, autotune and motor tests', () => {
   assert.deepEqual(p.parse('EV,Balancing'), { type: 'event', text: 'Balancing' });
   assert.deepEqual(p.parse('E, autotune aborted: driving'), { type: 'error', text: 'autotune aborted: driving' });
   assert.deepEqual(p.parse('AT,MEASURE'), { type: 'autotune', phase: 'MEASURE' });
-  const r = p.parse('AT,RESULT,1,0.202,0.202,0.202,1.72,0.99,0.0027,0.0002');
+  const r = p.parse('AT,RESULT,1,0.305,1.320,1.45,0.99,0.0214,0.0006');
   assert.equal(r.result.accepted, true);
-  assert.equal(r.result.length, 0.202);
-  assert.equal(r.result.zero, 1.72);
+  assert.equal(r.result.length, 0.305);
+  assert.equal(r.result.coupling, 1.32);
+  assert.equal(r.result.zero, 1.45);
   assert.deepEqual(p.parse('TEST,40.0,39.5'), { type: 'motorTest', left: 40, right: 39.5 });
   assert.deepEqual(p.parse('LQR,-8.926,-15.944,-105.718,-11.577,0.200'),
     { type: 'lqr', gain: [-8.926, -15.944, -105.718, -11.577], length: 0.2 });

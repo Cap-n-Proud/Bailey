@@ -211,8 +211,8 @@ button.primary.on { background: var(--bad); border-color: var(--bad); color: #ff
           <input id="loadIn" type="range" min="-6" max="6" step="0.5" value="0">
         </div>
         <div class="slider">
-          <label for="lengthIn">Centre of mass height</label><output id="lengthOut">20 cm</output>
-          <input id="lengthIn" type="range" min="10" max="40" step="1" value="20">
+          <label for="lengthIn">Pendulum length L</label><output id="lengthOut">31 cm</output>
+          <input id="lengthIn" type="range" min="25" max="60" step="1" value="31">
         </div>
         <div class="slider">
           <label for="noiseIn">IMU noise</label><output id="noiseOut">×1</output>
@@ -235,7 +235,8 @@ button.primary.on { background: var(--bad); border-color: var(--bad); color: #ff
       <canvas id="topview"></canvas>
       <dl class="facts">
         <dt>Distance</dt><dd id="distFact">0.00 m</dd>
-        <dt>Firmware's L</dt><dd id="lFact">20.0 cm</dd>
+        <dt>Firmware's L</dt><dd id="lFact">30.0 cm</dd>
+        <dt>Firmware's κ</dt><dd id="kFact">1.35</dd>
         <dt>Control loop</dt><dd id="loopFact">2000 µs</dd>
       </dl>
     </section>
@@ -256,7 +257,8 @@ const $ = (id) => document.getElementById(id);
 const STATES = ['OFF', 'WAIT', 'BAL', 'FALL'];
 const CTRL = { 0: 'PID', 1: 'LQR', 2: 'MPC' };
 const G = { THETA: 0, OMEGA: 1, X: 2, SPEED: 3, PITCH: 4, STATE: 5, CONTROLLER: 6, BALANCE: 7, HELD: 8, LENGTH: 9,
-  TIME: 10, HEADING: 11, POSX: 12, POSY: 13, WHEEL: 14, DIST: 15, THROTTLE: 16, STEER: 17, ZERO: 18, LOOPUS: 19 };
+  TIME: 10, HEADING: 11, POSX: 12, POSY: 13, WHEEL: 14, DIST: 15, THROTTLE: 16, STEER: 17, ZERO: 18, LOOPUS: 19,
+  COM: 20, WHEELR: 21, KAPPA: 22, FWKAPPA: 23 };
 const S = { PUSH: 0, LOAD: 1, LENGTH: 2, HELD: 3, NOISE: 4, SLIP: 5, AUTOPICKUP: 6, PICKUP: 7 };
 
 let sim = null, mem = null;
@@ -319,7 +321,7 @@ function logLine(text, kind = '') {
   while (serialEl.childElementCount > MAX_LINES) serialEl.firstChild.remove();
   if (atBottom) serialEl.scrollTop = serialEl.scrollHeight;
 }
-let firmwareL = 0.2;
+let firmwareL = 0.3;
 let lastTelemetryShown = 0;
 function onSerial(text) {
   for (const line of text.split('\n')) {
@@ -374,10 +376,10 @@ let camX = 0;
 function drawScene() {
   const { ctx, w, h } = fit($('scene'));
   const scale = Math.min(w, h * 1.6) / 0.95;     // px per metre
-  const x = get(G.X), theta = get(G.THETA) * Math.PI / 180, L = get(G.LENGTH);
+  const x = get(G.X), theta = get(G.THETA) * Math.PI / 180, com = get(G.COM);
   camX += (x - camX) * 0.08;
   const groundY = h - 56;
-  const R = 0.047 * scale;
+  const R = get(G.WHEELR) * scale;
   const cx = w / 2 + (x - camX) * scale;
   const axleY = groundY - R;
 
@@ -397,7 +399,7 @@ function drawScene() {
   }
 
   // Body: a plate from the axle up, centre of mass at L.
-  const bodyH = Math.max(0.16, L * 1.5) * scale, bodyW = 0.07 * scale;
+  const bodyH = Math.max(0.16, com * 1.6) * scale, bodyW = 0.07 * scale;
   ctx.save();
   ctx.translate(cx, axleY);
   ctx.rotate(theta);
@@ -425,8 +427,8 @@ function drawScene() {
   // Centre of mass marker
   ctx.strokeStyle = css('--truth');
   ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(0, -L * scale, 6, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-6, -L * scale); ctx.lineTo(6, -L * scale); ctx.moveTo(0, -L * scale - 6); ctx.lineTo(0, -L * scale + 6); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, -com * scale, 6, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-6, -com * scale); ctx.lineTo(6, -com * scale); ctx.moveTo(0, -com * scale - 6); ctx.lineTo(0, -com * scale + 6); ctx.stroke();
   ctx.restore();
 
   // Wheel, turning with the ground.
@@ -562,6 +564,7 @@ function renderStatus() {
   $('pushBack').disabled = $('pushFwd').disabled = st !== 'BAL';
   $('distFact').textContent = `${Math.abs(get(G.X)).toFixed(2)} m from start`;
   $('lFact').textContent = `${(firmwareL * 100).toFixed(1)} cm (real ${Math.round(get(G.LENGTH) * 100)} cm)`;
+  $('kFact').textContent = `${get(G.FWKAPPA).toFixed(2)} (real ${get(G.KAPPA).toFixed(2)})`;
   $('loopFact').textContent = `${get(G.LOOPUS)} µs (${(1e6 / get(G.LOOPUS)).toFixed(0)} Hz)`;
 }
 
@@ -692,7 +695,7 @@ function reset() {
   for (const k in trace) trace[k].length = 0;
   trail.length = 0;
   lastSample = -1;
-  firmwareL = 0.2;
+  firmwareL = 0.3;
   serialEl.replaceChildren();
   sliders.forEach((u) => u());
 }

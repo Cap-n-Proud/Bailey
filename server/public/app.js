@@ -205,8 +205,8 @@ function renderAutotune() {
   } else if (a.result) {
     const r = a.result;
     $('autotuneText').textContent = r.accepted
-      ? `Done: pendulum length ${(r.length * 100).toFixed(1)} cm, zero ${r.zero.toFixed(2)}°. Wobble ${r.before} → ${r.after}. Save to keep it.`
-      : `Rejected: the measurement wasn't consistent (${(r.lengthFromGravity * 100).toFixed(0)} vs ${(r.lengthFromAccel * 100).toFixed(0)} cm). Nothing changed.`;
+      ? `Done: pendulum length ${(r.length * 100).toFixed(1)} cm, wheel coupling ${r.coupling.toFixed(2)}, zero ${r.zero.toFixed(2)}°. Wobble ${r.before} → ${r.after}. Save to keep it.`
+      : `Rejected: the measurement didn't make physical sense (wheel coupling ${r.coupling.toFixed(2)}, expected 1-2.5; slipping wheels?). Nothing changed.`;
     $('lengthInput').value = r.accepted ? Math.round(r.length * 1000) : $('lengthInput').value;
   }
   renderState();

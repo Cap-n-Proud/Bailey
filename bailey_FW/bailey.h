@@ -53,10 +53,12 @@ struct Settings {
   // Orientation of IMU and motors. Fix these instead of rewiring.
   uint8_t imuAxis;                // gyro axis the robot pitches around: 0 = X, 1 = Y, 2 = Z
   uint8_t imuInvert;              // 1 = pitch reads negative when leaning forward
+  uint8_t imuAccelCompensation;   // 1 = take the wheels' acceleration out of the accelerometer (imu.ino)
   uint8_t motorLeftInvert, motorRightInvert;
 
   // Robot model and autotuner
-  float pendulumLength;           // m, effective pendulum length the gains were computed for
+  float pendulumLength;           // L, m: pitch'' = (g pitch - kappa a) / L (see lqr.ino)
+  float pendulumCoupling;         // kappa: how hard the wheels' acceleration tips the body (1 = cart-pole)
   float autotuneAmplitude;        // deg, wobble added to the pitch setpoint while measuring
 
   // Balance controller: 0 = PID cascade, 1 = LQR + disturbance observer, 2 = MPC
@@ -168,6 +170,7 @@ void printConfig();
 void autotuneStart();
 void autotuneAbort(const char *reason);
 float autotuneExcitation();
+float autotuneAccelExcitation();
 void autotuneStep(float dt, float angleError);
 void autotuneOnFall();
 bool autotuneRunning();
@@ -182,8 +185,8 @@ typedef Eigen::Vector4f Vec4;
 #define CONTROLLER_MPC 2         // mpc.ino
 extern bool lqrWeightsChanged;
 extern float balanceAngle;
-void lqrModel(float L, float dt, Mat4 &Ad, Vec4 &Bd);
-bool lqrSolve(float L, float dt, const float qDiag[4], float r, float K[4], Mat4 *P = NULL);
+void lqrModel(float L, float kappa, float dt, Mat4 &Ad, Vec4 &Bd);
+bool lqrSolve(float L, float kappa, float dt, const float qDiag[4], float r, float K[4], Mat4 *P = NULL);
 bool lqrSolveReference();
 void lqrMaintain(bool balancing);
 bool lqrReady();
@@ -208,11 +211,10 @@ struct MpcRequest {
   uint32_t at;                   // micros() of x0
   uint16_t generation;           // see mpcReset
 };
-// ...and the solver (on the other core) hands back the planned states and inputs.
+// ...and the solver (on the other core) hands back the plan.
 struct MpcPlan {
-  float x[MPC_N][4];
-  float u[MPC_N - 1];
-  uint32_t at;                   // micros() of x[0]
+  float c[MPC_N - 1];            // correction to the LQR's acceleration for each plan step
+  uint32_t at;                   // micros() of the state it was planned from
   uint16_t iterations, micros;
   uint16_t generation;
   bool valid;

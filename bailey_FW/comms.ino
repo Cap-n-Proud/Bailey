@@ -78,6 +78,7 @@ static const char P_dobBandwidth[] PROGMEM = "dobBandwidth";
 static const char P_kalmanQAngle[] PROGMEM = "kalmanQAngle";
 static const char P_kalmanQBias[] PROGMEM = "kalmanQBias";
 static const char P_kalmanR[] PROGMEM = "kalmanR";
+static const char P_pendulumCoupling[] PROGMEM = "pendulumCoupling";
 
 static const FloatParam floatParams[] = {
   { P_speedPIDKp, &cfg.speedPIDKp, 10000, true },
@@ -115,6 +116,7 @@ static const FloatParam floatParams[] = {
   { P_kalmanQAngle, &cfg.kalmanQAngle, 1, false },
   { P_kalmanQBias, &cfg.kalmanQBias, 1, false },
   { P_kalmanR, &cfg.kalmanR, 1, false },
+  { P_pendulumCoupling, &cfg.pendulumCoupling, 100, true },
 };
 
 struct IntParam {
@@ -126,6 +128,7 @@ struct IntParam {
 
 static const char P_imuAxis[] PROGMEM = "imuAxis";
 static const char P_imuInvert[] PROGMEM = "imuInvert";
+static const char P_imuAccelCompensation[] PROGMEM = "imuAccelCompensation";
 static const char P_motorLeftInvert[] PROGMEM = "motorLeftInvert";
 static const char P_motorRightInvert[] PROGMEM = "motorRightInvert";
 static const char P_debugSampleRate[] PROGMEM = "debugSampleRate";
@@ -135,6 +138,7 @@ static const char P_controller[] PROGMEM = "controller";
 static const IntParam intParams[] = {
   { P_imuAxis, &cfg.imuAxis, 1, 0, 2 },
   { P_imuInvert, &cfg.imuInvert, 1, 0, 1 },
+  { P_imuAccelCompensation, &cfg.imuAccelCompensation, 1, 0, 1 },
   { P_motorLeftInvert, &cfg.motorLeftInvert, 1, 0, 1 },
   { P_motorRightInvert, &cfg.motorRightInvert, 1, 0, 1 },
   { P_debugSampleRate, &cfg.debugSampleRate, 2, 50, 10000 },
@@ -199,7 +203,7 @@ static void setCommand(const char *arg, const char *value) {
     LQRParamTX();
   } else if (setParam(arg, value)) {
     // The gains are physical (gains.ino): if the speed scale changed, recompute them.
-    if (is(arg, P_stepperMaxSpeed) || is(arg, P_stepsPerRev) || is(arg, P_wheelDiameter)) {
+    if (is(arg, P_stepperMaxSpeed) || is(arg, P_stepsPerRev) || is(arg, P_wheelDiameter) || is(arg, P_pendulumCoupling)) {
       applyGainsForLength(cfg.pendulumLength);
       PIDParamTX();
     }
@@ -393,6 +397,8 @@ void SYSParamTX() {
 void printConfig() {
   Serial.print(F("*** pendulumLength = "));
   Serial.println(cfg.pendulumLength, 3);
+  Serial.print(F("*** pendulumCoupling = "));
+  Serial.println(cfg.pendulumCoupling, 3);
   for (uint8_t i = 0; i < COUNT(floatParams); i++) {
     Serial.print(F("*** "));
     Serial.print((const __FlashStringHelper *)floatParams[i].name);

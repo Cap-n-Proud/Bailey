@@ -11,14 +11,14 @@
 // solution, built for microcontrollers) every MPC_STEP, with the LQR's cost
 // (weights scaled with L like the LQR gain). Solving takes milliseconds, so on
 // the ESP32-S3 it runs on the second core (core 0) while the balance loop keeps
-// its 500 Hz on core 1. Between plans, the balance loop follows the latest one
-// with the LQR gain:
+// its 500 Hz on core 1. The plan is handed over as corrections to the LQR
+// (c = u + K x along the plan, K the LQR gain for the plan step), and the
+// balance loop applies
 //
-//   a = u_plan(t) - K (x - x_plan(t))
+//   a = -K x + c(t)
 //
 // so a late or missing plan degrades to plain LQR, never to no control. With
-// no limit in sight the plan is the LQR's own trajectory and the MPC behaves
-// like the LQR.
+// no limit in sight c is (nearly) 0 and the MPC behaves like the LQR.
 
 // MPC_N, MPC_STEP, MpcRequest and MpcPlan are in bailey.h (the Arduino IDE's
 // generated prototypes need them before the .ino files).
@@ -38,12 +38,14 @@ static MpcRequest mpcRequest;    // latest request, shared with the solver
 // ---------- solver side (core 0 on the ESP32-S3) ----------
 
 static TinySolver *mpcSolver = NULL;
-static float mpcBuiltFor[6];
+static float mpcBuiltFor[7];
+static float mpcK[4];            // LQR gain for the plan step (same cost)
 
 // Model and cost for the current L and weights. The solver memory is
 // allocated once; afterwards only the model, cost and TinyMPC's cache change.
 static bool mpcUpToDate() {
-  float now[6] = { cfg.pendulumLength, cfg.lqrMaxPosition, cfg.lqrMaxSpeed, cfg.lqrMaxAngle, cfg.lqrMaxRate, cfg.lqrMaxAccel };
+  float now[7] = { cfg.pendulumLength, cfg.pendulumCoupling, cfg.lqrMaxPosition, cfg.lqrMaxSpeed, cfg.lqrMaxAngle,
+                   cfg.lqrMaxRate, cfg.lqrMaxAccel };
   if (mpcSolver && memcmp(now, mpcBuiltFor, sizeof(now)) == 0) return true;
 
   float L = cfg.pendulumLength;
@@ -57,8 +59,10 @@ static bool mpcUpToDate() {
   tinyMatrix Q = q.asDiagonal(), Rm = tinyMatrix::Identity(1, 1);
   Mat4 Ad;
   Vec4 Bd;
-  lqrModel(L, MPC_STEP, Ad, Bd);
+  lqrModel(L, cfg.pendulumCoupling, MPC_STEP, Ad, Bd);
   tinyMatrix A = Ad, B = Bd, f = tinyMatrix::Zero(4, 1);
+  float qd[4] = { q(0), q(1), q(2), q(3) };
+  if (!lqrSolve(L, cfg.pendulumCoupling, MPC_STEP, qd, 1, mpcK)) return false;
 
   if (!mpcSolver) {
     if (tiny_setup(&mpcSolver, A, B, f, Q, Rm, MPC_RHO, 4, 1, MPC_N, 0) != 0) {
@@ -66,6 +70,8 @@ static bool mpcUpToDate() {
       return false;
     }
     mpcSolver->settings->max_iter = MPC_MAX_ITER;
+    tiny_set_bound_constraints(mpcSolver, tinyMatrix::Constant(4, MPC_N, -MPC_BIG), tinyMatrix::Constant(4, MPC_N, MPC_BIG),
+                               tinyMatrix::Zero(1, MPC_N - 1), tinyMatrix::Zero(1, MPC_N - 1));
   } else {
     TinyWorkspace *w = mpcSolver->work;
     w->Adyn = A;
@@ -93,11 +99,11 @@ static void mpcSolve(const MpcRequest &req, MpcPlan &plan) {
   // Bounds: acceleration on every step, speed from the first step on (x[0]
   // is the measurement: it may be slightly over and must not make the problem
   // infeasible). State 1 is the speed error: speed = error + reference.
-  tinyMatrix xMin = tinyMatrix::Constant(4, MPC_N, -MPC_BIG), xMax = tinyMatrix::Constant(4, MPC_N, MPC_BIG);
-  xMin.block(1, 1, 1, MPC_N - 1).setConstant(-req.vMax - req.referenceSpeed);
-  xMax.block(1, 1, 1, MPC_N - 1).setConstant(req.vMax - req.referenceSpeed);
-  tinyMatrix uMin = tinyMatrix::Constant(1, MPC_N - 1, -req.aMax), uMax = tinyMatrix::Constant(1, MPC_N - 1, req.aMax);
-  tiny_set_bound_constraints(mpcSolver, xMin, xMax, uMin, uMax);
+  // Written straight into the workspace: no copies, no allocation per solve.
+  w->x_min.block(1, 1, 1, MPC_N - 1).setConstant(-req.vMax - req.referenceSpeed);
+  w->x_max.block(1, 1, 1, MPC_N - 1).setConstant(req.vMax - req.referenceSpeed);
+  w->u_min.setConstant(-req.aMax);
+  w->u_max.setConstant(req.aMax);
 
   mpcShift(w->v); mpcShift(w->vnew); mpcShift(w->g);
   mpcShift(w->z); mpcShift(w->znew); mpcShift(w->y);
@@ -106,11 +112,15 @@ static void mpcSolve(const MpcRequest &req, MpcPlan &plan) {
   tiny_set_x0(mpcSolver, x0);
   tiny_solve(mpcSolver);
 
-  // The plan: TinyMPC's rollout (x, u) through the model from x0.
+  // The plan as corrections to the LQR: c_k = u_k + K x_k, with K the LQR gain
+  // for the plan step. Without a limit in sight the plan is the LQR's own
+  // trajectory and c is (nearly) 0, so the balance loop runs plain LQR.
   bool finite = w->x.allFinite() && w->u.allFinite();
-  for (uint8_t k = 0; k < MPC_N; k++)
-    for (uint8_t i = 0; i < 4; i++) plan.x[k][i] = w->x(i, k);
-  for (uint8_t k = 0; k < MPC_N - 1; k++) plan.u[k] = w->u(0, k);
+  for (uint8_t k = 0; k < MPC_N - 1; k++) {
+    float c = w->u(0, k);
+    for (uint8_t i = 0; i < 4; i++) c += mpcK[i] * w->x(i, k);
+    plan.c[k] = c;
+  }
   plan.at = req.at;
   plan.generation = req.generation;
   plan.iterations = w->iter;
@@ -210,18 +220,11 @@ float mpcAccel(const float x[4], float referenceSpeed) {
     for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];   // no plan: plain LQR
     return a;
   }
-  // Where the plan says the robot should be now (linear between knots), and its input.
-  float t = age / (float)MPC_STEP_US;
-  uint8_t k = (uint8_t)t;
+  // The LQR at the full control rate, plus the plan's correction for this step.
+  uint32_t k = age / MPC_STEP_US;
   if (k > MPC_N - 2) k = MPC_N - 2;
-  float frac = t - k;
-  if (frac > 1) frac = 1;
-  a = plan.u[k];
-  for (uint8_t i = 0; i < 4; i++) {
-    float xp = plan.x[k][i] + frac * (plan.x[k + 1][i] - plan.x[k][i]);
-    a -= lqrK[i] * (x[i] - xp);
-  }
-  return a;
+  for (uint8_t i = 0; i < 4; i++) a -= lqrK[i] * x[i];
+  return a + plan.c[k];
 }
 
 void mpcStats(uint16_t &iterations, uint16_t &microseconds) {
