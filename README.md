@@ -17,7 +17,7 @@ network hiccups. The Pi is the user interface.
 | [`bailey_FW/`](bailey_FW/README.md) | Firmware (ESP32-S3, C++ with Eigen and TinyMPC), plus a simulator of the robot that runs the real firmware on a PC or in the browser (`bailey_FW/test`) |
 | [`server/`](server/README.md) | Raspberry Pi server and web UI (Node.js) |
 | `install/` | Pi setup: `install.sh` (service), `updater.sh`, `flash-firmware.sh` (upload the firmware from the Pi), `pair-gamepad.sh` (PS4/PS5 controller) |
-| `hardware/` | OpenSCAD parts, schematics, photos |
+| `hardware/` | OpenSCAD parts, schematics, photos, links to third-party parts (`hardware/README.md`) |
 
 Getting started
 ---------------
