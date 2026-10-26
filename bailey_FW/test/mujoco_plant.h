@@ -53,6 +53,9 @@ static void mujocoBuild(Plant &p, double dt) {
   double ic = mb * l * (p.bodyLength - l);   // pitch inertia about the centre of mass
   // Roll and yaw inertia in proportion, so the three stay a valid inertia at any size.
   double iw = 0.5 * mw * r * r, height = std::max(2 * l, 0.1);
+  // Stepper servo: as stiff as the time step allows for this wheel (a stiffer
+  // one on a light wheel makes the integration unstable), damped critically x4.
+  double w = std::min(sqrt(2000 / iw), 0.4 / dt), kp = iw * w * w, kv = 8 * iw * w;
   char xml[4096];
   snprintf(xml, sizeof xml, R"(
 <mujoco>
@@ -77,13 +80,13 @@ static void mujocoBuild(Plant &p, double dt) {
     </body>
   </worldbody>
   <actuator>
-    <position joint="wl" kp="2000" kv="4"/>
-    <position joint="wr" kp="2000" kv="4"/>
+    <position joint="wl" kp="%g" kv="%g"/>
+    <position joint="wr" kp="%g" kv="%g"/>
   </actuator>
 </mujoco>)",
            dt, r, l, mb, 1.05 * ic, ic, 0.2 * ic, height / 2, height / 2,
            MJ_TRACK / 2, mw, 0.55 * iw, iw, 0.55 * iw, r,
-           -MJ_TRACK / 2, mw, 0.55 * iw, iw, 0.55 * iw, r);
+           -MJ_TRACK / 2, mw, 0.55 * iw, iw, 0.55 * iw, r, kp, kv, kp, kv);
   mjVFS vfs;
   mj_defaultVFS(&vfs);
   mj_addBufferVFS(&vfs, "bailey.xml", xml, strlen(xml));

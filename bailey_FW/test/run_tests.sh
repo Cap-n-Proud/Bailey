@@ -30,7 +30,7 @@ if ./build_mujoco.sh >/dev/null 2>&1; then
       printf '== sim_mujoco (controller %s) ' "$c"
       SIM_CONTROLLER=$c ./sim_mujoco $s || fail=1
     done
-    for L in 0.31 0.25 0.45; do
+    for L in 0.24 0.20 0.45; do
       printf '== sim_mujoco (controller %s, L %s) ' "$c" "$L"
       SIM_CONTROLLER=$c AT_L=$L ./sim_mujoco autotune || fail=1
     done

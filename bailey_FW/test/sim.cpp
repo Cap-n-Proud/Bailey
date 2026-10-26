@@ -62,17 +62,19 @@ static void mujocoStep(Plant &p, double dt, double wl, double wr);
 struct Plant {
   static inline int count = 0;
   int id = ++count;             // a new Plant() means a new robot (the MuJoCo model is rebuilt)
-  // Geometry: 94 mm wheels, centre of mass 15 cm above the axle.
-  double wheelRadius = 0.047;
-  double bodyMass = 1.5;        // kg
-  double wheelMass = 0.2;       // kg, both wheels (uniform discs)
-  double comHeight = 0.15;      // m, centre of mass above the axle
-  double bodyLength = 0.20;     // (I + m l^2) / (m l) of the body alone, about the axle
+  // Bailey (hardware/README.md): the PLA frame from the Fusion 360 model, two
+  // 17HD34008 steppers at the axle, battery, electronics and the Pi on the
+  // shelves, 65 mm wheels. L = 0.24 m, kappa = 1.56.
+  double wheelRadius = 0.0324;
+  double bodyMass = 1.13;       // kg, everything but the wheels
+  double wheelMass = 0.08;      // kg, both wheels (uniform discs)
+  double comHeight = 0.064;     // m, centre of mass above the axle (the motors keep it low)
+  double bodyLength = 0.158;    // (I + m l^2) / (m l) of the body alone, about the axle
   double g = 9.81;
   double stepsPerRev = 1600;    // 200-step motor, 1/8 microstepping
   double mountOffsetDeg = 1.5;  // IMU is tilted this much when the robot is truly upright
   double noiseDeg = 0.05;       // scales accelerometer and gyro noise
-  double imuHeight = 0.12;      // m above the axle: it also feels the body's rotation
+  double imuHeight = 0.03;      // m above the axle (on the motor plate): it also feels the body's rotation
   double gyroBiasDps = 0.3;     // residual bias after the boot calibration
   double gyroBiasDrift = 0;     // deg/s per s, e.g. the chip warming up
   double sensorLag = 0.0048;    // s, MPU-6050 low-pass filter delay at DLPF_BW_42
@@ -104,19 +106,21 @@ struct Plant {
                 (bodyJ() + wheelM() + 2 * bodyMass * wheelRadius * comHeight);
     return p3 * fallLength();
   }
-  // A robot with the given L, same proportions (centre of mass at 3/4 of
-  // bodyLength). Big robots get a taller body on the same wheels; below
-  // 0.25 m the whole robot, wheels included, is scaled down (94 mm wheels
-  // can't make a shorter pendulum). Returns false if the wheel size changed.
+  // A robot with the given L, same proportions as Bailey (centre of mass at
+  // the same fraction of bodyLength). Big robots get a taller body on the same
+  // wheels; below 0.20 m the whole robot, wheels included, is scaled down
+  // (shorter bodies on 65 mm wheels give an implausible kappa above 1.8).
+  // Returns false if the wheel size changed.
   bool setLength(double L) {
-    const double rDefault = 0.047, Lmin = 0.25;
-    wheelRadius = rDefault;
+    const Plant bailey;
+    const double Lmin = 0.20, shape = bailey.comHeight / bailey.bodyLength;
+    wheelRadius = bailey.wheelRadius;
     double scale = 1;
     if (L < Lmin) { scale = L / Lmin; L = Lmin; }
     double lo = 0.06, hi = 2;
     for (int i = 0; i < 60; i++) {
       bodyLength = (lo + hi) / 2;
-      comHeight = 0.75 * bodyLength;
+      comHeight = shape * bodyLength;
       (fallLength() < L ? lo : hi) = bodyLength;
     }
     wheelRadius *= scale;
@@ -491,7 +495,7 @@ static bool autotuneCase(double length, double offsetDeg, double tolerance = 0.1
   run(4);
   send("SCMD AUTOTUNE 1");
   stats.reset();
-  run(35);
+  run(38);
   AtResult r = lastAutotuneResult();
   printf("  L %.2f m, kappa %.2f, IMU reads %+.2f deg upright -> measured L %.3f, kappa %.2f, offset %+.2f, R2 %.2f, "
          "score %.4f -> %.4f\n", length, plant.coupling(), uprightReading, r.L, r.kappa, r.offset, r.r2, r.before, r.after);
@@ -512,8 +516,8 @@ static bool autotuneCase(double length, double offsetDeg, double tolerance = 0.1
 static bool scenarioAutotune() {
   if (getenv("AT_L")) return autotuneCase(atof(getenv("AT_L")), getenv("AT_OFFSET") ? atof(getenv("AT_OFFSET")) : 1.5);
   bool ok = true;
-  ok &= autotuneCase(0.31, 1.5);    // Bailey
-  ok &= autotuneCase(0.25, -1.0);   // the shortest robot on Bailey's 94 mm wheels
+  ok &= autotuneCase(Plant().fallLength(), 1.5);   // Bailey
+  ok &= autotuneCase(0.20, -1.0);   // the shortest robot on Bailey's 65 mm wheels
   ok &= autotuneCase(0.45, 2.5);    // taller
   // A smaller robot on smaller wheels: its faster dynamics are measured less
   // well (L 20-25 % high), but the result still balances better.
@@ -529,7 +533,7 @@ static bool scenarioAutotune() {
   run(4);
   float kp = cfg.anglePIDConKp, zero = cfg.calibratedZeroAngle;
   send("SCMD AUTOTUNE 1");
-  run(35);
+  run(38);
   AtResult r = lastAutotuneResult();
   printf("  slipping wheels -> L %.3f, kappa %.2f\n", r.L, r.kappa);
   ok &= check(r.seen && !r.accepted, "slipping wheels: result rejected");

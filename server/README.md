@@ -32,7 +32,7 @@ The web UI
   only one program can use the camera.
 * **Tuning:**
   * **Controller:** LQR (default), MPC or PID, with the LQR gain and pendulum length shown.
-  * **Autotune** (about 30 s, while balancing) measures the robot and sets its gains and zero.
+  * **Autotune** (about 33 s, while balancing) measures the robot and sets its gains and zero.
   * **Calibrate zero**, **Motor test**, **Save to EEPROM** and **Load defaults**.
   * **Pendulum length**, if you've measured it.
   * The gains, editable in real units.

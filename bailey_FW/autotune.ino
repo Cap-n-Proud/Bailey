@@ -13,11 +13,12 @@
 // Gains then follow from L and kappa (gains.ino, lqr.ino) and the offset
 // becomes the new zero.
 //
-// "SCMD AUTOTUNE 1" while balancing, throttle and steer at 0. About 30 s:
+// "SCMD AUTOTUNE 1" while balancing, throttle and steer at 0. About 33 s:
 //   1. BASELINE  6 s  balance on the current gains, score the wobble
 //   2. MEASURE  18 s  add a small wobble (autotuneAmplitude) to the pitch
 //                     setpoint so there is motion to measure, fit the model
-//   3. VERIFY    6 s  balance on the new gains and zero, score the wobble
+//   3. VERIFY    9 s  balance on the new gains and zero, score the wobble
+//                     (after 4 s: a tall robot takes ~3 s to calm down after MEASURE)
 // The result is kept only if the fit is consistent and the robot balances at
 // least as well as before; otherwise everything is restored. "SCMD SaveCfg 1"
 // stores it. Driving, steering, falling, Motors 0, AUTOTUNE 0 or a tilt error
@@ -29,8 +30,9 @@
 
 #define BASELINE_S   6.0f
 #define MEASURE_S    18.0f
-#define VERIFY_S     6.0f
+#define VERIFY_S     9.0f
 #define SETTLE_S     1.0f       // start of each phase not scored / not fitted
+#define VERIFY_SETTLE_S 4.0f    // ... longer after MEASURE's wobble
 #define FIT_CUTOFF_HZ 3.0f      // same low-pass on every signal entering the fit
 #define FIT_PITCH_TAU 5.0f      // s, see fitPitch
 #define ABORT_ERROR  6.0f       // deg
@@ -287,7 +289,7 @@ void autotuneStep(float dt, float angleError) {
   phaseTime += dt;
 
   if (phase == AT_BASELINE || phase == AT_VERIFY) {
-    if (phaseTime > SETTLE_S) {
+    if (phaseTime > (phase == AT_VERIFY ? VERIFY_SETTLE_S : SETTLE_S)) {
       score += angleError * angleError * dt;
       scoreTime += dt;
       // Balancing in place, the true pitch rate averages to zero, so the
