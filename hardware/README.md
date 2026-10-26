@@ -66,7 +66,7 @@ short motors that leaves about 4 m/s² to catch a fall. The big wheels also add 
 | **Body** | **1.13 kg** | **centre of mass 64 mm** |
 | 2 wheels | 80 g | |
 
-Pitch inertia of the body about the axle: 4.6 g·m² (`bodyLength` 0.158 m). That gives a pendulum
+Pitch inertia of the body about the axle: 11.5 g·m² (`bodyLength` 0.158 m). That gives a pendulum
 length **L ≈ 0.24 m** and coupling **κ ≈ 1.56**, the firmware defaults. The heavy motors at the axle
 keep the centre of mass low, so the robot behaves like a 24 cm pendulum although it is 26 cm tall.
 
