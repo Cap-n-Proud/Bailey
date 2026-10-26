@@ -73,7 +73,7 @@ pitch'' = (g · pitch − κ · a) / L
 with `a` the wheels' acceleration (steppers do exactly what they're told), `L` how fast the robot
 falls and `κ` how hard the wheels' acceleration tips it. A cart-pole has κ = 1. A real two-wheeler
 has more, because the motors' housings are bolted to the body: the wheels turn with the body and
-the motors push back on it. For Bailey's geometry this gives L ≈ 0.31 m and κ ≈ 1.4; the autotuner
+the motors push back on it. For Bailey's geometry (`hardware/README.md`) this gives L ≈ 0.24 m and κ ≈ 1.56; the autotuner
 measures both (`pendulumLength`, `pendulumCoupling`). This was found by checking the simulator against
 the **MuJoCo** physics engine (`test/mujoco_check.py`). Firmware 2.x used a plain cart-pole, which
 had the robot falling 55 % too fast; worse, its autotuner required two length estimates to agree
@@ -252,7 +252,7 @@ shifts and robots of 7-45 cm:
 * Kalman: `kalmanQAngle` 0.002, `kalmanQBias` 0.003, `kalmanR` 3.
 
 The gain only depends on the robot through L and κ, and the autotuner measures both. Before
-autotuning, the defaults (L = 0.30 m, κ = 1.35, from Bailey's geometry) balance robots from 7 cm to
+autotuning, the defaults (L = 0.24 m, κ = 1.56, from Bailey's geometry) balance robots from 7 cm to
 45 cm in the simulator.
 
 **PID.** The gains live in physical units in `gains.ino` and are converted using
@@ -269,13 +269,14 @@ compensated pitch filter). In the simulator they balance robots from L = 7 cm to
 better once scaled to the true L. If you know L, set it with `SCMD pendulumLength <mm>`.
 Otherwise let the autotuner measure it.
 
-Geometry from `hardware/`: 94 mm wheels, 220 mm body, head with the Pi and camera on top. The
-mass distribution isn't in the CAD files, which is why L is measured rather than assumed.
+Bailey's geometry and mass budget are in `hardware/README.md`: 65 mm wheels, a 263 mm PLA frame,
+two NEMA17 steppers at the axle, the battery, electronics and the Pi on the shelves. The masses are
+estimates, which is why L and κ are measured rather than assumed.
 
 Autotuner
 ---------
 
-`SCMD AUTOTUNE 1` while the robot balances, with throttle and steer at 0. It takes about 30 s and
+`SCMD AUTOTUNE 1` while the robot balances, with throttle and steer at 0. It takes about 33 s and
 **measures** the robot instead of trying gains on it. A robot on stepper wheels obeys
 
 ```
@@ -349,6 +350,22 @@ the disturbance observer's balance angle.
 Simulator
 ---------
 
+Quick start (Linux, or macOS with Homebrew's `g++` and `eigen`):
+
+```sh
+cd bailey_FW/test
+./run_tests.sh                      # every scenario, each controller (a few minutes)
+./build.sh && ./sim balance         # one scenario: balance, push, drive, fall, autotune, ...
+SIM_CONTROLLER=2 ./sim push         # with MPC (0 PID, 1 LQR, 2 MPC)
+SIM_L=0.35 ./sim balance            # a taller robot than Bailey
+cd ../../server && npm install && npm run sim   # the web UI on a simulated robot: http://localhost:54321
+```
+
+The simulated robot is Bailey (`Plant` in `test/sim.cpp`, from `hardware/README.md`). When the real
+robot changes (masses, shelves, wheels), update `wheelRadius`, `bodyMass`, `wheelMass`, `comHeight`
+and `bodyLength` there and the defaults in `settings.ino` (`wheelDiameter`, `pendulumLength`,
+`pendulumCoupling`), then run `run_tests.sh`.
+
 `test/run_tests.sh` (needs g++ and Eigen: `apt install libeigen3-dev`) compiles the firmware,
 including TinyMPC, against a model of the robot and checks balancing, pushes, driving, fall
 detection and recovery, the autotuner, the LQR solver against SciPy, the motor limits, the command
@@ -370,7 +387,8 @@ fall over, and whose steppers are stiff servos following the step rate. `run_tes
 and MPC scenarios and the autotuner on it when MuJoCo is installed. The PID controller is left out:
 it balances, but rests with a small (~0.2°) wobble on this plant and misses the stopping test.
 The `scaling` scenario also runs only on the built-in plant: its smallest robot (7 cm, 13 mm wheels)
-doesn't balance on MuJoCo's contact model; 0.2-0.45 m robots do.
+doesn't balance on MuJoCo's contact model; 0.2-0.45 m robots do. Each stepper is a servo as stiff as
+MuJoCo's time step allows for its wheel.
 
 `test/build_wasm.sh` builds the same simulator as WebAssembly for `test/web/index.html`, an
 interactive page with a side view of the robot, driving, pushes, payload, controller choice and the

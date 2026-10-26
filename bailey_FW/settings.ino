@@ -9,7 +9,7 @@ void loadDefaultSettings() {
   cfg.version = SETTINGS_VERSION;
 
   // Hardware (needed first: the stepper gains are computed from it)
-  cfg.wheelDiameter = 94;
+  cfg.wheelDiameter = 65;
   cfg.stepperMaxSpeed = 4000;     // 200-step motor at 1/8 microstepping: 2.5 rev/s
   cfg.stepperMaxAccel = 40000;
   cfg.stepsPerRev = 1600;
@@ -23,10 +23,11 @@ void loadDefaultSettings() {
   // Gains, checked in the simulator (test/) over a range of body heights, IMU
   // offsets and noise. The autotuner replaces the guessed
   // pendulum length with a measured one.
-  // Bailey's geometry (94 mm wheels, centre of mass about 15 cm up) gives
-  // about L = 0.3 m and kappa = 1.4; the autotuner measures both.
-  cfg.pendulumLength = 0.30;
-  cfg.pendulumCoupling = 1.35;
+  // Bailey's geometry (65 mm wheels, the motors at the axle keeping the
+  // centre of mass about 6 cm up, hardware/README.md) gives about L = 0.24 m
+  // and kappa = 1.56; the autotuner measures both.
+  cfg.pendulumLength = 0.24;
+  cfg.pendulumCoupling = 1.56;
   applyGainsForLength(cfg.pendulumLength);
   cfg.TriggerAngleAggressive = 8.0;
   cfg.anglePIDOutputLimit = 100;
@@ -53,7 +54,7 @@ void loadDefaultSettings() {
   cfg.lqrMaxAngle = 4.5;
   cfg.lqrMaxRate = 10;
   cfg.lqrMaxAccel = 2.7;
-  cfg.lqrAccelLimit = 6;           // below the steppers' ~7 m/s^2 (stepperMaxAccel)
+  cfg.lqrAccelLimit = 4.5;         // below the steppers' 5.1 m/s^2 on 65 mm wheels (stepperMaxAccel)
   cfg.dobBandwidth = 2;
 
   cfg.kalmanQAngle = 0.002;
