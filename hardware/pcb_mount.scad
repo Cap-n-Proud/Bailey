@@ -128,8 +128,13 @@ module pcb_posts(l, w, holes, pilot = 2.2, gap = 6, post = 5.5, base = 2.4, ears
 // hdr_w, hdr_h       female header body width and height (measure yours)
 // legs               height of the end legs: room under the socket for the
 //                    tails and the Dupont plugs
+// leg_t, pillar      end leg thickness, and width of the arch's sides
+//
+// Both ends are open arches, for the wires and to save material. The arches
+// are pointed (equilateral), so they print without support; the flat
+// underside of the block between the legs is a bridge (or add support there).
 module pico_socket(pins = 20, pitch = 2.54, row = 17.78, hdr_w = 2.54, hdr_h = 8.5,
-                   legs = 22, wall = 2.5, fit = 0.15, base = 2.4) {
+                   legs = 22, wall = 2.5, fit = 0.15, base = 2.4, leg_t = 4, pillar = 3) {
     len = pins * pitch;
     sw = hdr_w + 2 * fit;                       // slot width: a press fit
     bw = row + hdr_w + 2 * wall;                // block width
@@ -139,10 +144,14 @@ module pico_socket(pins = 20, pitch = 2.54, row = 17.78, hdr_w = 2.54, hdr_h = 8
             // the socket block, carried on two end legs
             translate([-bl / 2, -bw / 2, legs]) cube([bl, bw, hdr_h]);
             for (s = [-1, 1]) {
-                translate([s > 0 ? bl / 2 - 6 : -bl / 2, -bw / 2, 0]) cube([6, bw, legs]);
+                translate([s > 0 ? bl / 2 - leg_t : -bl / 2, -bw / 2, 0]) cube([leg_t, bw, legs]);
                 ear(s * bl / 2, base, bw);
             }
         }
+        // the arches through both end legs
+        for (s = [-1, 1])
+            translate([s > 0 ? bl / 2 - leg_t - 1 : -bl / 2 - 1, 0, base])   // above the sill
+                rotate([90, 0, 90]) linear_extrude(leg_t + 2) arch(bw - 2 * pillar, legs - 1.5 - base);
         for (s = [-1, 1]) {
             // header slots, through, with a ledge at the bottom the plastic rests on
             translate([-len / 2 - fit, s * row / 2 - sw / 2, legs + 1]) cube([len + 2 * fit, sw, hdr_h]);
@@ -150,5 +159,20 @@ module pico_socket(pins = 20, pitch = 2.54, row = 17.78, hdr_w = 2.54, hdr_h = 8
         }
         // window between the rows (lighter, and air under the ESP32)
         translate([-len / 2 + 3, -row / 2 + 3, legs - 1]) cube([len - 6, row - 6, hdr_h + 2]);
+    }
+}
+
+// A pointed (equilateral) arch opening, span wide and height high, standing
+// on y = 0: vertical sides, then two arcs meeting at the top. Its overhang
+// never exceeds 30 degrees from vertical, so it prints without support.
+module arch(span, height) {
+    r = span;                                  // equilateral: radius = span
+    rise = span * sqrt(3) / 2;                 // height of the pointed part
+    side = max(height - rise, 0);
+    translate([-span / 2, 0]) square([span, side + 0.01]);
+    translate([0, side]) intersection() {
+        translate([-span / 2, 0]) circle(r = r, $fn = 120);
+        translate([span / 2, 0]) circle(r = r, $fn = 120);
+        translate([-span / 2, 0]) square([span, rise]);
     }
 }

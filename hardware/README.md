@@ -102,7 +102,8 @@ Board holders
   and pulls straight out.
   * **Wiring:** with *stacking* female headers (10-11 mm tails), the wires plug onto the tails
     underneath with Dupont connectors, so nothing is soldered to the ESP32.
-  * **Printing:** the socket stands on two 22 mm legs. The underside of its top is a 43 mm bridge,
+  * **Printing:** the socket stands on two 22 mm legs, each an open pointed arch for the wires.
+    The arches print without support. The underside of its top is a 43 mm bridge,
     which prints fine with the cooling fan on. Or set `legs = 0` and screw it over a cut-out in the
     shelf, so the wires pass through the shelf.
   * **Alternative:** solder the same female headers onto a 5 × 7 cm perfboard, which comes with four
