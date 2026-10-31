@@ -4,8 +4,11 @@
 //             rests on corner pads and clicks in under flexible hooks on its
 //             long sides; end stops stop it sliding. The holder screws to a
 //             shelf with two M3 screws (or a cable tie through the slots).
-// pcb_posts() boards with mounting holes (ESP32-S3-Pico, GY-521, ...): posts
-//             with pilot holes for small self-tapping screws.
+// pcb_posts() boards with mounting holes (GY-521, ...): posts with pilot
+//             holes for small self-tapping screws.
+// pico_socket() the ESP32-S3-Pico, which has no mounting holes: it plugs
+//             into two female header strips held in a printed socket, like a
+//             chip in its socket (see below).
 //
 // Measure the board with calipers (length, width, thickness) and check where
 // its components sit at the edges: the hooks overlap the top of the board by
@@ -27,9 +30,9 @@ if (part == "buck")
     pcb_clip(l = 52, w = 23.5, t = 1.6, hooks = [-0.15, 0.15]);
 
 if (part == "esp32")
-    // Waveshare ESP32-S3-Pico (Raspberry Pi Pico layout: 51 x 21 mm, M2 holes
-    // 47 x 11.4 mm apart). Check against your board.
-    pcb_posts(l = 51, w = 21, holes = [[-23.5, -5.7], [-23.5, 5.7], [23.5, -5.7], [23.5, 5.7]], pilot = 1.7);
+    // Waveshare ESP32-S3-Pico: 2 x 20 pins, 2.54 mm apart, rows 17.78 mm apart
+    // (Raspberry Pi Pico layout), no mounting holes.
+    pico_socket();
 
 if (part == "test")
     // A short strip to check the fit and the hook's snap before printing the
@@ -109,5 +112,43 @@ module pcb_posts(l, w, holes, pilot = 2.2, gap = 6, post = 5.5, base = 2.4, ears
         for (h = holes) translate([h[0], h[1], 1]) cylinder(d = pilot, h = base + gap);
         // weight and airflow: a window between the posts
         translate([-l / 2 + 7, -w / 2 + 4, -1]) cube([l - 14, w - 8, base + 2]);
+    }
+}
+
+// ---------- socket for the ESP32-S3-Pico ----------
+
+// The board gets male pin headers soldered pointing down and plugs into two
+// 1 x 20 female header strips, which press into the slots of this socket.
+// With "stacking" female headers (long tails, 10-11 mm) the wires plug onto
+// the tails underneath with Dupont connectors: nothing soldered to the
+// ESP32's pins, and the board comes out by pulling it up. Ordinary female
+// headers work too, with the wires soldered to their tails.
+//
+// pins, pitch, row   pins per side, pin spacing, distance between the rows
+// hdr_w, hdr_h       female header body width and height (measure yours)
+// legs               height of the end legs: room under the socket for the
+//                    tails and the Dupont plugs
+module pico_socket(pins = 20, pitch = 2.54, row = 17.78, hdr_w = 2.54, hdr_h = 8.5,
+                   legs = 22, wall = 2.5, fit = 0.15, base = 2.4) {
+    len = pins * pitch;
+    sw = hdr_w + 2 * fit;                       // slot width: a press fit
+    bw = row + hdr_w + 2 * wall;                // block width
+    bl = len + 2 * wall;                        // block length
+    difference() {
+        union() {
+            // the socket block, carried on two end legs
+            translate([-bl / 2, -bw / 2, legs]) cube([bl, bw, hdr_h]);
+            for (s = [-1, 1]) {
+                translate([s > 0 ? bl / 2 - 6 : -bl / 2, -bw / 2, 0]) cube([6, bw, legs]);
+                ear(s * bl / 2, base, bw);
+            }
+        }
+        for (s = [-1, 1]) {
+            // header slots, through, with a ledge at the bottom the plastic rests on
+            translate([-len / 2 - fit, s * row / 2 - sw / 2, legs + 1]) cube([len + 2 * fit, sw, hdr_h]);
+            translate([-len / 2, s * row / 2 - 0.8, legs - 1]) cube([len, 1.6, 3]);
+        }
+        // window between the rows (lighter, and air under the ESP32)
+        translate([-len / 2 + 3, -row / 2 + 3, legs - 1]) cube([len - 6, row - 6, hdr_h + 2]);
     }
 }

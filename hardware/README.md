@@ -95,8 +95,19 @@ Board holders
 * **`pcb_clip`**, for boards without mounting holes, such as the buck converter. The board rests on
   corner pads 6 mm above the plate, clear of its solder joints, and clicks in under four flexible hooks.
   To take it out, push a hook outwards. End stops keep it from sliding.
-* **`pcb_posts`**, for boards with holes, such as the ESP32-S3-Pico. Posts with pilot holes for small
+* **`pcb_posts`**, for boards with holes, such as the GY-521. Posts with pilot holes for small
   self-tapping screws: 1.7 mm for M2, 2.2 mm for M2.5, 2.6 mm for M3.
+* **`pico_socket`**, for the ESP32-S3-Pico, which has no mounting holes. Solder male pin headers to it,
+  pointing down. It then plugs into two 1 × 20 female header strips pressed into the socket's slots,
+  and pulls straight out.
+  * **Wiring:** with *stacking* female headers (10-11 mm tails), the wires plug onto the tails
+    underneath with Dupont connectors, so nothing is soldered to the ESP32.
+  * **Printing:** the socket stands on two 22 mm legs. The underside of its top is a 43 mm bridge,
+    which prints fine with the cooling fan on. Or set `legs = 0` and screw it over a cut-out in the
+    shelf, so the wires pass through the shelf.
+  * **Alternative:** solder the same female headers onto a 5 × 7 cm perfboard, which comes with four
+    M3 holes. Its tracks can then carry the 3V3/GND distribution and the connectors for the drivers,
+    IMU and battery divider.
 
 Both screw to a shelf with two countersunk M3 screws, or a cable tie through the slots.
 **Stepper drivers** go in their carrier boards, which have screw holes and the capacitor the
