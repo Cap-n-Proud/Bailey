@@ -87,6 +87,29 @@ SCMD lqrAccelLimit 4.5
 These are the firmware defaults, so they only matter if older settings were saved. Then run
 `SCMD AUTOTUNE 1` and `SCMD SaveCfg 1`.
 
+Board holders
+-------------
+
+`pcb_mount.scad` (OpenSCAD) holds the small boards without glue:
+
+* **`pcb_clip`**, for boards without mounting holes, such as the buck converter. The board rests on
+  corner pads 6 mm above the plate, clear of its solder joints, and clicks in under four flexible hooks.
+  To take it out, push a hook outwards. End stops keep it from sliding.
+* **`pcb_posts`**, for boards with holes, such as the ESP32-S3-Pico. Posts with pilot holes for small
+  self-tapping screws: 1.7 mm for M2, 2.2 mm for M2.5, 2.6 mm for M3.
+
+Both screw to a shelf with two countersunk M3 screws, or a cable tie through the slots.
+**Stepper drivers** go in their carrier boards, which have screw holes and the capacitor the
+driver needs, so they need no holder.
+
+To make one:
+
+1. Measure the board with calipers.
+2. Set its sizes in the file, and move `hooks` to where the board's long edges are free of components.
+3. Print `part = "test"` first to check the fit and the snap.
+
+Print flat, base down, with no supports.
+
 Third-party printed parts
 -------------------------
 
