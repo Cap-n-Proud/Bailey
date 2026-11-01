@@ -90,37 +90,45 @@ These are the firmware defaults, so they only matter if older settings were save
 Board holders
 -------------
 
-`pcb_mount.scad` (OpenSCAD) holds the small boards without glue:
+`pcb_mount.scad` (OpenSCAD) holds Bailey's boards without glue. Each board is a list of its sizes at
+the top of the file. Change the numbers, press F5 or F6, and the holder is redesigned.
 
-* **`pcb_clip`**, for boards without mounting holes, such as the buck converter. The board rests on
-  corner pads 6 mm above the plate, clear of its solder joints, and clicks in under four flexible hooks.
-  To take it out, push a hook outwards. End stops keep it from sliding.
-* **`pcb_posts`**, for boards with holes, such as the GY-521. Posts with pilot holes for small
-  self-tapping screws: 1.7 mm for M2, 2.2 mm for M2.5, 2.6 mm for M3.
-* **`pico_socket`**, for the ESP32-S3-Pico, which has no mounting holes. Solder male pin headers to it,
-  pointing down. It then plugs into two 1 × 20 female header strips pressed into the socket's slots,
-  and pulls straight out.
-  * **Wiring:** with *stacking* female headers (10-11 mm tails), the wires plug onto the tails
-    underneath with Dupont connectors, so nothing is soldered to the ESP32.
-  * **Printing:** the socket stands on two 22 mm legs, each an open pointed arch for the wires.
-    The arches print without support. The underside of its top is a 43 mm bridge,
-    which prints fine with the cooling fan on. Or set `legs = 0` and screw it over a cut-out in the
-    shelf, so the wires pass through the shelf.
-  * **Alternative:** solder the same female headers onto a 5 × 7 cm perfboard, which comes with four
-    M3 holes. Its tracks can then carry the 3V3/GND distribution and the connectors for the drivers,
-    IMU and battery divider.
+**`board_clamp`, for any board with or without holes** (`esp32`, `driver`, `buck`):
 
-Both screw to a shelf with two countersunk M3 screws, or a cable tie through the slots.
-**Stepper drivers** go in their carrier boards, which have screw holes and the capacitor the
-driver needs, so they need no holder.
+* One edge of the board slides into a groove. A bar screwed down with two M3 screws, into heat-set
+  inserts, clamps the opposite edge. It holds firm against motor vibration and comes apart with a
+  screwdriver.
+* `grip` picks which pair of edges is held: `"short"` when the pins run along the long edges (ESP32,
+  drivers), `"long"` otherwise (buck converter).
+* `keep_fixed` and `keep_bar` cut gaps for connectors and parts at the edge: `[[centre, width]]`, with
+  centre 0 the middle of the edge. The ESP32 preset leaves room for the USB-C plug.
+* `ledge_inset` keeps the ledges under the board away from the corners, where the pin headers'
+  plastic sits.
+* `gap` is the space under the board: 20 mm for pins pointing down with Dupont plugs, 4 mm for pins
+  pointing up. The sides along the free edges are open, and so is an arch under the bar, so wires
+  come out sideways.
+* The tray fixes to a shelf with cable ties through its slots or an M3 screw at each end.
+* Export `esp32` and `esp32_bar`, and the same for the other boards. Print both flat, as exported.
 
-To make one:
+**`imu_mount`, the IMU on the axle line** (`imu`):
 
-1. Measure the board with calipers.
-2. Set its sizes in the file, and move `hooks` to where the board's long edges are free of components.
-3. Print `part = "test"` first to check the fit and the snap.
+* An L bracket that screws to a vertical face behind the axle, such as the back of the base.
+* Two vertical slots adjust the height. Slots under the board's posts adjust it fore-aft.
+* Small V notches on both gussets mark the chip's height on the axle line: slide the bracket until
+  the notches line up with the axle centre, then tighten.
+* `reach` is the distance from the mounting face to the axle line. `holes` and `chip` are the
+  board's holes and the chip's position on it.
+* Any orientation works as long as the board is square to the axle. Set `imuAxis` and `imuInvert`
+  in the firmware to match.
 
-Print flat, base down, with no supports.
+The older options are still in the file:
+
+* **`pcb_posts`:** posts for boards with mounting holes.
+* **`pcb_clip`:** snap-in, no screws, but less firm.
+* **`pico_socket`:** the ESP32 plugged into female headers.
+
+**Bare stepper drivers** (no carrier board) need a **100 µF capacitor** across VM and GND, close to
+the driver, or the motor's voltage spikes can destroy them.
 
 Third-party printed parts
 -------------------------
