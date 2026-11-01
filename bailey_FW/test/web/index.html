@@ -199,7 +199,7 @@ button.primary.on { background: var(--bad); border-color: var(--bad); color: #ff
             <button data-ctrl="2" aria-pressed="false">MPC</button>
             <button data-ctrl="0" aria-pressed="false">PID</button>
           </div>
-          <button id="autotuneBtn" title="Measures the robot while it balances (about 30 s)">Autotune</button>
+          <button id="autotuneBtn" title="Measures the robot while it balances (about 33 s)">Autotune</button>
         </div>
         <p class="hint" id="ctrlHint">Switching controller turns the motors off first, as the firmware requires.</p>
       </div>
@@ -235,7 +235,7 @@ button.primary.on { background: var(--bad); border-color: var(--bad); color: #ff
       <canvas id="topview"></canvas>
       <dl class="facts">
         <dt>Distance</dt><dd id="distFact">0.00 m</dd>
-        <dt>Firmware's L</dt><dd id="lFact">30.0 cm</dd>
+        <dt>Firmware's L</dt><dd id="lFact">24.0 cm</dd>
         <dt>Firmware's κ</dt><dd id="kFact">1.56</dd>
         <dt>Control loop</dt><dd id="loopFact">2000 µs</dd>
       </dl>
@@ -321,7 +321,7 @@ function logLine(text, kind = '') {
   while (serialEl.childElementCount > MAX_LINES) serialEl.firstChild.remove();
   if (atBottom) serialEl.scrollTop = serialEl.scrollHeight;
 }
-let firmwareL = 0.3;
+let firmwareL = 0.24;
 let lastTelemetryShown = 0;
 function onSerial(text) {
   for (const raw of text.split('\n')) {
@@ -417,7 +417,7 @@ function drawScene() {
   ctx.globalAlpha = 1;
   // IMU
   ctx.fillStyle = css('--accent');
-  ctx.fillRect(-5, -0.12 * scale - 4, 10, 8);
+  ctx.fillRect(-5, -0.03 * scale - 4, 10, 8);   // on the motor plate, near the axle
   // Payload off-centre
   const load = Number($('loadIn').value);
   if (load !== 0) {
@@ -696,7 +696,7 @@ function reset() {
   for (const k in trace) trace[k].length = 0;
   trail.length = 0;
   lastSample = -1;
-  firmwareL = 0.3;
+  firmwareL = 0.24;
   serialEl.replaceChildren();
   sliders.forEach((u) => u());
 }
