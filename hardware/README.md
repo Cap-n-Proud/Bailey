@@ -87,6 +87,49 @@ SCMD lqrAccelLimit 4.5
 These are the firmware defaults, so they only matter if older settings were saved. Then run
 `SCMD AUTOTUNE 1` and `SCMD SaveCfg 1`.
 
+Board holders
+-------------
+
+`pcb_mount.scad` (OpenSCAD) holds Bailey's boards without glue. Each board is a list of its sizes at
+the top of the file. Change the numbers, press F5 or F6, and the holder is redesigned.
+
+**`board_clamp`, for any board with or without holes** (`esp32`, `driver`, `buck`):
+
+* One edge of the board slides into a groove. A bar screwed down with two M3 screws, into heat-set
+  inserts, clamps the opposite edge. It holds firm against motor vibration and comes apart with a
+  screwdriver.
+* `grip` picks which pair of edges is held: `"short"` when the pins run along the long edges (ESP32,
+  drivers), `"long"` otherwise (buck converter).
+* `keep_fixed` and `keep_bar` cut gaps for connectors and parts at the edge: `[[centre, width]]`, with
+  centre 0 the middle of the edge. The ESP32 preset leaves room for the USB-C plug.
+* `ledge_inset` keeps the ledges under the board away from the corners, where the pin headers'
+  plastic sits.
+* `gap` is the space under the board: 20 mm for pins pointing down with Dupont plugs, 4 mm for pins
+  pointing up. The sides along the free edges are open, and so is an arch under the bar, so wires
+  come out sideways.
+* The tray fixes to a shelf with cable ties through its slots or an M3 screw at each end.
+* Export `esp32` and `esp32_bar`, and the same for the other boards. Print both flat, as exported.
+
+**`imu_mount`, the IMU on the axle line** (`imu`):
+
+* An L bracket that screws to a vertical face behind the axle, such as the back of the base.
+* Two vertical slots adjust the height. Slots under the board's posts adjust it fore-aft.
+* Small V notches on both gussets mark the chip's height on the axle line: slide the bracket until
+  the notches line up with the axle centre, then tighten.
+* `reach` is the distance from the mounting face to the axle line. `holes` and `chip` are the
+  board's holes and the chip's position on it.
+* Any orientation works as long as the board is square to the axle. Set `imuAxis` and `imuInvert`
+  in the firmware to match.
+
+The older options are still in the file:
+
+* **`pcb_posts`:** posts for boards with mounting holes.
+* **`pcb_clip`:** snap-in, no screws, but less firm.
+* **`pico_socket`:** the ESP32 plugged into female headers.
+
+**Bare stepper drivers** (no carrier board) need a **100 µF capacitor** across VM and GND, close to
+the driver, or the motor's voltage spikes can destroy them.
+
 Third-party printed parts
 -------------------------
 
